@@ -1,0 +1,772 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Quality Audit Dashboard</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Sora:wght@600;700&family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;1,400&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet">
+</head>
+<body>
+<div id="app"></div>
+<script>
+function appMain(INITIAL_STATE){
+  'use strict';
+
+  var CSS_TEXT = [
+'*,*::before,*::after{box-sizing:border-box;}',
+':root{',
+'  --bg:#F4F6F7; --surface:#FFFFFF; --surface-2:#EAEEF0; --border:#DCE2E5;',
+'  --text:#1B242B; --text-muted:#5C6B73;',
+'  --accent:#1E6E62; --accent-contrast:#FFFFFF; --accent-soft:#E3EFEC;',
+'  --success:#2E7D46; --success-soft:#E4F3E8;',
+'  --warning:#8A5D00; --warning-soft:#FBF0DC;',
+'  --danger:#B23A32; --danger-soft:#FBE8E6;',
+'  --shadow:0 1px 2px rgba(20,30,30,0.07),0 1px 1px rgba(20,30,30,0.05);',
+'  --radius:12px;',
+'}',
+'@media (prefers-color-scheme: dark){',
+'  :root:not([data-theme="light"]){',
+'    --bg:#10151A; --surface:#1B222A; --surface-2:#212A33; --border:#2C3743;',
+'    --text:#E7EDF0; --text-muted:#93A3AC;',
+'    --accent:#4FBBA8; --accent-contrast:#0B1512; --accent-soft:#1A2E2B;',
+'    --success:#57C278; --success-soft:#16301F;',
+'    --warning:#E3A83E; --warning-soft:#332A12;',
+'    --danger:#E5665C; --danger-soft:#341C1A;',
+'    --shadow:0 1px 3px rgba(0,0,0,0.5);',
+'  }',
+'}',
+':root[data-theme="dark"]{',
+'  --bg:#10151A; --surface:#1B222A; --surface-2:#212A33; --border:#2C3743;',
+'  --text:#E7EDF0; --text-muted:#93A3AC;',
+'  --accent:#4FBBA8; --accent-contrast:#0B1512; --accent-soft:#1A2E2B;',
+'  --success:#57C278; --success-soft:#16301F;',
+'  --warning:#E3A83E; --warning-soft:#332A12;',
+'  --danger:#E5665C; --danger-soft:#341C1A;',
+'  --shadow:0 1px 3px rgba(0,0,0,0.5);',
+'}',
+'html,body{background:var(--bg);color:var(--text);}',
+'body{margin:0;font-family:"IBM Plex Sans",system-ui,-apple-system,sans-serif;font-size:14.5px;line-height:1.5;}',
+'h1,h2,h3{font-family:"Sora",system-ui,sans-serif;font-weight:700;margin:0;text-wrap:balance;}',
+'.mono{font-family:"IBM Plex Mono",ui-monospace,monospace;font-variant-numeric:tabular-nums;}',
+'.wrap{max-width:1180px;margin:0 auto;padding:28px 22px 64px;}',
+'.topbar{position:sticky;top:0;z-index:20;background:var(--bg);border-bottom:1px solid var(--border);}',
+'.topbar-inner{max-width:1180px;margin:0 auto;padding:18px 22px;display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap;}',
+'.brand{display:flex;flex-direction:column;gap:2px;}',
+'.brand h1{font-size:20px;letter-spacing:-0.01em;}',
+'.brand span{color:var(--text-muted);font-size:12.5px;}',
+'.tabs{display:flex;gap:6px;background:var(--surface-2);padding:4px;border-radius:999px;border:1px solid var(--border);}',
+'.tab-btn{border:none;background:transparent;color:var(--text-muted);font-family:inherit;font-size:13.5px;font-weight:600;padding:8px 16px;border-radius:999px;cursor:pointer;}',
+'.tab-btn.active{background:var(--surface);color:var(--text);box-shadow:var(--shadow);}',
+'.badge{display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:600;padding:5px 10px;border-radius:999px;white-space:nowrap;}',
+'.badge-dot{width:7px;height:7px;border-radius:50%;}',
+'.badge-synced{background:var(--success-soft);color:var(--success);}',
+'.badge-synced .badge-dot{background:var(--success);}',
+'.badge-local{background:var(--surface-2);color:var(--text-muted);}',
+'.badge-local .badge-dot{background:var(--text-muted);}',
+'.badge-readonly{background:var(--warning-soft);color:var(--warning);}',
+'.badge-readonly .badge-dot{background:var(--warning);}',
+'.banner{border-radius:var(--radius);padding:12px 16px;font-size:13.5px;margin-bottom:18px;border:1px solid transparent;}',
+'.banner-warning{background:var(--warning-soft);color:var(--warning);border-color:var(--warning);}',
+'.banner-error{background:var(--danger-soft);color:var(--danger);border-color:var(--danger);}',
+'.card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow);}',
+'.section-title{font-size:15px;margin-bottom:4px;}',
+'.section-sub{color:var(--text-muted);font-size:13px;margin-bottom:16px;}',
+'.form-card{padding:22px;margin-bottom:20px;}',
+'.meta-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:14px;margin-bottom:22px;}',
+'.field label{display:block;font-size:12px;font-weight:600;color:var(--text-muted);margin-bottom:6px;text-transform:uppercase;letter-spacing:.04em;}',
+'input[type=text],input[type=date],select,textarea{width:100%;background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:9px 11px;font-family:inherit;font-size:13.5px;color:var(--text);}',
+'input:focus,select:focus,textarea:focus{outline:2px solid var(--accent);outline-offset:1px;}',
+'textarea{resize:vertical;min-height:64px;}',
+'.group-header{font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--accent);padding:16px 0 8px;border-top:1px solid var(--border);margin-top:6px;}',
+'.group-header:first-of-type{border-top:none;margin-top:0;}',
+'.q-row{display:grid;grid-template-columns:2.2fr 1.4fr 1fr 1fr;gap:12px;align-items:start;padding:12px 0;border-bottom:1px dashed var(--border);}',
+'.q-row:last-child{border-bottom:none;}',
+'@media (max-width:900px){.q-row{grid-template-columns:1fr;}}',
+'.q-text{font-size:13.5px;padding-top:8px;}',
+'.q-weight{display:inline-block;margin-left:6px;font-size:11px;font-weight:600;color:var(--accent);background:var(--accent-soft);padding:2px 7px;border-radius:999px;}',
+'.seg{display:flex;gap:6px;}',
+'.seg-btn{flex:1;border:1px solid var(--border);background:var(--surface);color:var(--text-muted);font-family:inherit;font-weight:600;font-size:12.5px;padding:8px 6px;border-radius:8px;cursor:pointer;}',
+'.seg-btn.seg-active.seg-yes{background:var(--success-soft);border-color:var(--success);color:var(--success);}',
+'.seg-btn.seg-active.seg-no{background:var(--warning-soft);border-color:var(--warning);color:var(--warning);}',
+'.seg-btn.seg-active.seg-fatal{background:var(--danger-soft);border-color:var(--danger);color:var(--danger);}',
+'.score-panel{display:flex;align-items:center;gap:22px;padding:18px 22px;border-radius:var(--radius);background:var(--surface-2);border:1px solid var(--border);margin:18px 0;flex-wrap:wrap;}',
+'.score-num{font-family:"IBM Plex Mono",monospace;font-size:34px;font-weight:600;}',
+'.score-num.fatal{color:var(--danger);}',
+'.score-num.pass{color:var(--success);}',
+'.score-num.mid{color:var(--warning);}',
+'.score-sub{color:var(--text-muted);font-size:12.5px;}',
+'.btn{font-family:inherit;font-weight:600;font-size:13.5px;padding:10px 18px;border-radius:9px;cursor:pointer;border:1px solid transparent;}',
+'.btn-primary{background:var(--accent);color:var(--accent-contrast);}',
+'.btn-ghost{background:transparent;border-color:var(--border);color:var(--text);}',
+'.actions{display:flex;gap:10px;margin-top:18px;}',
+'.stat-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:22px;}',
+'@media (max-width:820px){.stat-grid{grid-template-columns:1fr 1fr;}}',
+'.stat-tile{padding:16px 18px;text-align:left;width:100%;font-family:inherit;color:inherit;border:1px solid var(--border);}',
+'.stat-tile.clickable{cursor:pointer;transition:box-shadow .15s ease,border-color .15s ease,transform .15s ease;}',
+'.stat-tile.clickable:hover{border-color:var(--accent);box-shadow:0 2px 8px rgba(20,30,30,0.1);transform:translateY(-1px);}',
+'.stat-tile.clickable:hover .stat-hint{opacity:1;}',
+'.stat-tile.active{border-color:var(--accent);background:var(--accent-soft);}',
+'.stat-label{font-size:12px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.04em;font-weight:600;margin-bottom:8px;}',
+'.stat-value{font-family:"IBM Plex Mono",monospace;font-size:26px;font-weight:600;}',
+'.stat-hint{margin-top:6px;font-size:11px;color:var(--accent);opacity:0;transition:opacity .15s ease;font-weight:600;}',
+'.status-chip{display:inline-flex;align-items:center;gap:6px;background:var(--accent-soft);color:var(--accent);font-size:12.5px;font-weight:600;padding:8px 8px 8px 14px;border-radius:999px;}',
+'.status-chip button{background:none;border:none;color:inherit;font-size:15px;line-height:1;cursor:pointer;padding:0 4px;}',
+'.filters{display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end;padding:16px 20px;margin-bottom:18px;}',
+'.filters .field{min-width:150px;}',
+'.filters .field label{margin-bottom:5px;}',
+'.pill-btn{background:var(--surface-2);border:1px solid var(--border);border-radius:8px;color:var(--text-muted);font-family:inherit;font-size:12.5px;font-weight:600;padding:9px 14px;cursor:pointer;}',
+'.pill-btn:disabled{opacity:.5;cursor:not-allowed;}',
+'.agent-table{width:100%;padding:20px;margin-bottom:20px;}',
+'.agent-row{display:grid;grid-template-columns:2fr 1fr 1fr 3fr;gap:14px;align-items:center;padding:9px 6px;border-bottom:1px solid var(--border);font-size:13px;width:100%;background:none;border-left:none;border-right:none;border-top:none;font-family:inherit;color:inherit;text-align:left;border-radius:6px;}',
+'.agent-row:last-child{border-bottom:none;}',
+'.agent-row.head{color:var(--text-muted);font-size:11.5px;text-transform:uppercase;letter-spacing:.04em;font-weight:700;}',
+'.agent-row.clickable{cursor:pointer;}',
+'.agent-row.clickable:hover{background:var(--surface-2);}',
+'.agent-row.active{background:var(--accent-soft);}',
+'.bar-track{background:var(--surface-2);border-radius:6px;height:10px;overflow:hidden;}',
+'.bar-fill{height:100%;border-radius:6px;background:var(--accent);}',
+'.table-wrap{overflow-x:auto;}',
+'table.audits{width:100%;border-collapse:collapse;font-size:13px;min-width:940px;}',
+'table.audits th{text-align:left;color:var(--text-muted);font-size:11.5px;text-transform:uppercase;letter-spacing:.04em;padding:10px 12px;border-bottom:1px solid var(--border);white-space:nowrap;}',
+'table.audits td{padding:12px;border-bottom:1px solid var(--border);vertical-align:top;}',
+'table.audits tr:last-child td{border-bottom:none;}',
+'.status-badge{display:inline-block;padding:4px 10px;border-radius:999px;font-size:11.5px;font-weight:700;}',
+'.status-pass{background:var(--success-soft);color:var(--success);}',
+'.status-mid{background:var(--warning-soft);color:var(--warning);}',
+'.status-fail{background:var(--danger-soft);color:var(--danger);}',
+'.status-fatal{background:var(--danger-soft);color:var(--danger);}',
+'.link-btn{background:none;border:none;color:var(--accent);font-family:inherit;font-weight:600;font-size:12.5px;cursor:pointer;padding:0;}',
+'.link-btn.danger{color:var(--danger);}',
+'.detail-row td{background:var(--surface-2);}',
+'.detail-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:10px;margin-bottom:12px;}',
+'.detail-item{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:9px 11px;font-size:12.5px;}',
+'.detail-item .p{color:var(--text-muted);font-size:11px;text-transform:uppercase;letter-spacing:.03em;margin-bottom:3px;}',
+'.detail-note{font-size:12.5px;background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:10px 12px;margin-top:6px;}',
+'.detail-note b{display:block;font-size:11px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.03em;margin-bottom:4px;}',
+'.empty-state{text-align:center;padding:60px 20px;color:var(--text-muted);}',
+'.toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:var(--text);color:var(--bg);padding:12px 20px;border-radius:999px;font-size:13px;font-weight:600;box-shadow:var(--shadow);z-index:50;}',
+'.req-star{color:var(--danger);}'
+  ].join('\n');
+
+  var styleEl = document.createElement('style');
+  styleEl.textContent = CSS_TEXT;
+  document.head.appendChild(styleEl);
+
+  var AGENTS = [
+    'amar.shankar@wiom.in','deepak@wiom.in','dhananjay.shukla@wiom.in',
+    'hitesh.kumar@wiom.in','kriti.tiwari@wiom.in','noor.ahmad@wiom.in',
+    'pintoo.kumar1@wiom.in','Poonam.singh@wiom.in','rohit.kumar@wiom.in',
+    'vivek.pandey@wiom.in'
+  ];
+
+  var PARAMS = [
+    {group:'Standardization', question:'Adherence to Call opening', weight:5},
+    {group:'Standardization', question:'Adherence to Call closing', weight:5},
+    {group:'Soft Skills', question:'Effective probing/Attentiveness', weight:8},
+    {group:'Soft Skills', question:'Tone & Courtesy', weight:8},
+    {group:'Soft Skills', question:'Active Listening & Communication', weight:8},
+    {group:'Soft Skills', question:'Hold/Mute Protocol', weight:8},
+    {group:'Soft Skills', question:'Reassurance/Empathy', weight:8},
+    {group:'Resolution & Process Adherence', question:'Accurate and Complete resolution provided', weight:10},
+    {group:'Resolution & Process Adherence', question:'SOP Followed: Were document/link requests and refund steps handled as per SOP', weight:10},
+    {group:'Tool Management / Documentation', question:'Did the agent update the internal notes', weight:10},
+    {group:'Tool Management / Documentation', question:'Ticket protocol adhered', weight:10},
+    {group:'CSAT Triggered', question:'Was customer asked to give rating', weight:10},
+    {group:'Compliance', question:'Agent did not fall under ZTP parameter', weight:0, zt:true}
+  ];
+  var PASS_THRESHOLD = 85;
+  var MID_THRESHOLD = 70;
+
+  var state = INITIAL_STATE || {audits:[]};
+  var readOnly = false;
+  var syncStatus = 'checking';
+  var activeTab = 'submit';
+  var expanded = {};
+  var filters = {from:'', to:'', auditor:'All', agent:'All', status:'all'};
+  var toastMsg = '';
+  var toastTimer = null;
+  var formState = freshFormState();
+
+  var appEl = document.getElementById('app');
+
+  function freshFormState(){
+    return {
+      meta:{auditor:'', agent:'', date:todayStr(), auditDate:todayStr(), ticketId:'', summary:'', improvement:'', fatalFeedback:''},
+      ratings: PARAMS.map(function(){ return {rating:null, reason:'', comment:''}; }),
+      error:''
+    };
+  }
+
+  function todayStr(){
+    var d = new Date();
+    return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+  }
+
+  function uid(){ return 'a_'+Date.now().toString(36)+Math.random().toString(36).slice(2,8); }
+
+  function esc(s){
+    return String(s==null?'':s).replace(/[&<>"']/g, function(c){
+      return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];
+    });
+  }
+
+  function computeScore(ratings){
+    var fatal = false, score = 0;
+    ratings.forEach(function(r, i){
+      var p = PARAMS[i];
+      if(r.rating === 'Fatal') fatal = true;
+      if(p.zt && r.rating === 'No') fatal = true;
+      if(r.rating === 'Yes') score += p.weight;
+    });
+    if(fatal) score = 0;
+    return {score:score, fatal:fatal};
+  }
+
+  function statusOf(audit){
+    if(audit.fatal) return {label:'Fatal', cls:'status-fatal'};
+    if(audit.score >= PASS_THRESHOLD) return {label:'Pass', cls:'status-pass'};
+    if(audit.score >= MID_THRESHOLD) return {label:'Needs Improvement', cls:'status-mid'};
+    return {label:'Fail', cls:'status-fail'};
+  }
+
+  function toast(msg){
+    toastMsg = msg;
+    if(toastTimer) clearTimeout(toastTimer);
+    toastTimer = setTimeout(function(){ toastMsg=''; render(); }, 3500);
+  }
+
+  function safeJSON(obj){ return JSON.stringify(obj).replace(/</g, '\\u003c'); }
+
+  function buildDoc(newState){
+    return '<!doctype html>\n<html lang="en">\n<head>\n<meta charset="UTF-8">\n'
+      + '<meta name="viewport" content="width=device-width, initial-scale=1.0">\n'
+      + '<title>Quality Audit Dashboard</title>\n'
+      + '<link rel="preconnect" href="https://fonts.googleapis.com">\n'
+      + '<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>\n'
+      + '<link href="https://fonts.googleapis.com/css2?family=Sora:wght@600;700&family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;1,400&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet">\n'
+      + '</head>\n<body>\n<div id="app"></div>\n<script>\n'
+      + appMain.toString()
+      + ';\nappMain(' + safeJSON(newState) + ');\n'
+      + '</scr' + 'ipt>\n</body>\n</html>';
+  }
+
+  async function persist(newState){
+    state = newState;
+    render();
+    if(typeof window.claude === 'undefined'){ syncStatus='local'; return; }
+    try{
+      var art = await window.claude.use('artifact');
+      if(!art){ syncStatus='local'; return; }
+      await art.publish(buildDoc(newState));
+      syncStatus = 'synced';
+    }catch(err){
+      if(err && (err.code==='not_writer' || err.code==='not_granted' || err.code==='consent_required')){
+        readOnly = true;
+        toast('Read-only view — this audit is kept in your session only.');
+        render();
+      }else if(err && err.code==='conflict'){
+        // another writer published first; the view is already reloading to it
+      }else{
+        toast('Could not save just now — the audit is kept in this session only.');
+        render();
+      }
+    }
+  }
+
+  function probeSync(){
+    if(typeof window.claude === 'undefined'){ syncStatus='local'; return; }
+    window.claude.use('artifact').then(function(art){
+      syncStatus = art ? 'synced' : 'local';
+      render();
+    }).catch(function(){ syncStatus='local'; render(); });
+  }
+
+  // ---------- rendering ----------
+
+  function render(){
+    var html = renderHeader() + '<div class="wrap">'
+      + (activeTab==='submit' ? renderSubmitTab() : renderDashboardTab())
+      + '</div>'
+      + (toastMsg ? '<div class="toast">'+esc(toastMsg)+'</div>' : '');
+    appEl.innerHTML = html;
+  }
+
+  function syncBadge(){
+    if(readOnly) return '<span class="badge badge-readonly"><span class="badge-dot"></span>Read-only</span>';
+    if(syncStatus==='synced') return '<span class="badge badge-synced"><span class="badge-dot"></span>Synced</span>';
+    if(syncStatus==='local') return '<span class="badge badge-local"><span class="badge-dot"></span>Local session</span>';
+    return '<span class="badge badge-local"><span class="badge-dot"></span>Checking…</span>';
+  }
+
+  function renderHeader(){
+    return '<div class="topbar"><div class="topbar-inner">'
+      + '<div class="brand"><h1>Quality Audit Dashboard</h1><span>Call auditing, scored against the weighted QA scorecard</span></div>'
+      + '<div style="display:flex;align-items:center;gap:14px;">'
+      + syncBadge()
+      + '<div class="tabs">'
+      + '<button type="button" class="tab-btn'+(activeTab==='submit'?' active':'')+'" data-action="tab" data-tab="submit">Submit Audit</button>'
+      + '<button type="button" class="tab-btn'+(activeTab==='dashboard'?' active':'')+'" data-action="tab" data-tab="dashboard">Dashboard</button>'
+      + '</div></div></div></div>';
+  }
+
+  function scoreClass(res){
+    if(res.fatal) return 'fatal';
+    if(res.score >= PASS_THRESHOLD) return 'pass';
+    if(res.score >= MID_THRESHOLD) return 'mid';
+    return 'fatal';
+  }
+
+  function renderSubmitTab(){
+    var res = computeScore(formState.ratings);
+    var out = '';
+    out += '<div class="card form-card">';
+    out += '<h2 class="section-title">Call details</h2><p class="section-sub">Every field below feeds the weighted score shown as you rate the call.</p>';
+
+    out += '<div class="meta-grid">';
+    out += field('Auditor <span class="req-star">*</span>', '<input type="text" data-field="auditor" value="'+esc(formState.meta.auditor)+'" placeholder="Your name">');
+    out += field('Agent <span class="req-star">*</span>', agentSelect());
+    out += field('Call date <span class="req-star">*</span>', '<input type="date" data-field="date" value="'+esc(formState.meta.date)+'">');
+    out += field('Audit date <span class="req-star">*</span>', '<input type="date" data-field="auditDate" value="'+esc(formState.meta.auditDate)+'">');
+    out += field('Ticket / Call ID', '<input type="text" data-field="ticketId" value="'+esc(formState.meta.ticketId)+'" placeholder="Optional">');
+    out += '</div>';
+
+    if(formState.error){
+      out += '<div class="banner banner-error">'+esc(formState.error)+'</div>';
+    }
+
+    var lastGroup = null;
+    PARAMS.forEach(function(p, i){
+      if(p.group !== lastGroup){
+        out += '<div class="group-header">'+esc(p.group)+'</div>';
+        lastGroup = p.group;
+      }
+      var r = formState.ratings[i];
+      out += '<div class="q-row">';
+      out += '<div class="q-text">'+esc(p.question)+'<span class="q-weight">'+p.weight+' pts</span></div>';
+      out += '<div class="seg">'
+        + segBtn(i,'Yes',r.rating) + segBtn(i,'No',r.rating) + segBtn(i,'Fatal',r.rating)
+        + '</div>';
+      out += '<input type="text" data-field="reason" data-idx="'+i+'" value="'+esc(r.reason)+'" placeholder="Reason for Yes/No/Fatal">';
+      out += '<input type="text" data-field="comment" data-idx="'+i+'" value="'+esc(r.comment)+'" placeholder="Comments">';
+      out += '</div>';
+    });
+
+    out += '<div id="score-preview">'+scorePreviewHTML(res)+'</div>';
+
+    out += '<div class="meta-grid" style="grid-template-columns:1fr;gap:14px;">';
+    out += field('Call summary', '<textarea data-field="summary" placeholder="What was the call about?">'+esc(formState.meta.summary)+'</textarea>');
+    out += field('Areas of improvement', '<textarea data-field="improvement" placeholder="Coaching notes for the agent">'+esc(formState.meta.improvement)+'</textarea>');
+    out += field('Fatal feedback'+(res.fatal?' <span class="req-star">*</span>':''), '<textarea data-field="fatalFeedback" placeholder="Required when a Fatal / ZTP breach is marked">'+esc(formState.meta.fatalFeedback)+'</textarea>');
+    out += '</div>';
+
+    out += '<div class="actions">'
+      + '<button type="button" class="btn btn-primary" data-action="submit-audit">Submit audit</button>'
+      + '<button type="button" class="btn btn-ghost" data-action="reset-form">Reset form</button>'
+      + '</div>';
+    out += '</div>';
+    return out;
+  }
+
+  function field(label, inputHtml){
+    return '<div class="field"><label>'+label+'</label>'+inputHtml+'</div>';
+  }
+
+  function agentSelect(){
+    var out = '<select data-field="agent">';
+    out += '<option value=""'+(formState.meta.agent===''?' selected':'')+'>Select agent…</option>';
+    AGENTS.forEach(function(a){
+      out += '<option value="'+esc(a)+'"'+(formState.meta.agent===a?' selected':'')+'>'+esc(a)+'</option>';
+    });
+    out += '</select>';
+    return out;
+  }
+
+  function segBtn(idx, value, current){
+    var cls = 'seg-btn seg-'+value.toLowerCase()+(current===value?' seg-active':'');
+    return '<button type="button" class="'+cls+'" data-action="rate" data-idx="'+idx+'" data-value="'+value+'">'+value+'</button>';
+  }
+
+  function scorePreviewHTML(res){
+    var cls = scoreClass(res);
+    var subtitle = res.fatal ? 'Fatal / ZTP breach marked — score forced to 0' : (res.score>=PASS_THRESHOLD ? 'Meets pass threshold ('+PASS_THRESHOLD+')' : 'Below pass threshold ('+PASS_THRESHOLD+')');
+    return '<div class="score-panel"><div class="score-num mono '+cls+'">'+res.score+'<span style="font-size:16px;color:var(--text-muted);">/100</span></div>'
+      + '<div class="score-sub">Live score based on weighted parameters.<br>'+esc(subtitle)+'</div></div>';
+  }
+
+  // ---------- dashboard ----------
+
+  function matchesStatus(a, status){
+    if(status==='all') return true;
+    if(status==='fatal') return !!a.fatal;
+    if(status==='pass') return !a.fatal && a.score>=PASS_THRESHOLD;
+    if(status==='mid') return !a.fatal && a.score>=MID_THRESHOLD && a.score<PASS_THRESHOLD;
+    if(status==='fail') return !a.fatal && a.score<MID_THRESHOLD;
+    return true;
+  }
+
+  function statusLabel(status){
+    return {all:'All audits', pass:'Pass', mid:'Needs Improvement', fail:'Fail', fatal:'Fatal'}[status] || 'All audits';
+  }
+
+  function filteredAudits(){
+    return state.audits.filter(function(a){
+      if(filters.from && a.date < filters.from) return false;
+      if(filters.to && a.date > filters.to) return false;
+      if(filters.auditor!=='All' && a.auditor!==filters.auditor) return false;
+      if(filters.agent!=='All' && a.agent!==filters.agent) return false;
+      if(!matchesStatus(a, filters.status)) return false;
+      return true;
+    }).sort(function(a,b){
+      if(a.date!==b.date) return a.date<b.date?1:-1;
+      return (a.submittedAt<b.submittedAt)?1:-1;
+    });
+  }
+
+  function distinctAuditors(){
+    var set = {};
+    state.audits.forEach(function(a){ set[a.auditor]=true; });
+    return Object.keys(set).sort();
+  }
+
+  // ---------- export ----------
+
+  function csvEscape(v){
+    var s = String(v==null?'':v);
+    if(/[",\n]/.test(s)) return '"'+s.replace(/"/g,'""')+'"';
+    return s;
+  }
+
+  function buildCSV(list){
+    var headers = ['Call Date','Audit Date','Auditor','Agent','Ticket ID','Parameter','Question','Weightage','Rating','Reason','Comment','Total Score','Fatal','Call Summary','Areas of Improvement','Fatal Feedback','Submitted At'];
+    var rows = [headers.join(',')];
+    list.forEach(function(a){
+      a.ratings.forEach(function(r){
+        rows.push([
+          a.date, a.auditDate||'', a.auditor, a.agent, a.ticketId||'',
+          r.param, r.question, r.weight, r.rating, r.reason, r.comment,
+          a.score, a.fatal?'Yes':'No', a.summary, a.improvement, a.fatalFeedback, a.submittedAt
+        ].map(csvEscape).join(','));
+      });
+    });
+    return rows.join('\r\n');
+  }
+
+  function buildJSON(list){
+    return JSON.stringify(list, null, 2);
+  }
+
+  function exportFilename(ext){
+    return 'quality-audits-'+todayStr()+'.'+ext;
+  }
+
+  async function exportFile(filename, content, mime){
+    if(typeof window.claude !== 'undefined'){
+      var dl = null;
+      try{ dl = await window.claude.use('downloads'); }catch(e){}
+      if(dl){
+        try{
+          await dl.save({filename:filename, data:content});
+          toast('Downloaded '+filename);
+        }catch(err){
+          if(err && err.code==='declined'){ /* viewer said no */ }
+          else if(err && (err.code==='rejected_extension' || err.code==='extension_not_enabled')){
+            toast('That file type is not enabled here — try Export JSON instead.');
+          }else{
+            toast('Could not start the download here.');
+          }
+        }
+        return;
+      }
+      toast('Downloads are not available in this view.');
+      return;
+    }
+    try{
+      var blob = new Blob([content], {type:mime});
+      var url = URL.createObjectURL(blob);
+      var a = document.createElement('a');
+      a.href = url; a.download = filename;
+      document.body.appendChild(a); a.click(); document.body.removeChild(a);
+      setTimeout(function(){ URL.revokeObjectURL(url); }, 2000);
+      toast('Downloaded '+filename);
+    }catch(e){
+      toast('Download is not available in this view.');
+    }
+  }
+
+  function renderDashboardTab(){
+    var list = filteredAudits();
+    var out = '';
+
+    out += '<div class="card filters">';
+    out += filterField('From', '<input type="date" data-field="filter-from" value="'+esc(filters.from)+'">');
+    out += filterField('To', '<input type="date" data-field="filter-to" value="'+esc(filters.to)+'">');
+    out += filterField('Auditor', auditorFilterSelect());
+    out += filterField('Agent', agentFilterSelect());
+    out += '<button type="button" class="pill-btn" data-action="clear-filters">Clear filters</button>';
+    if(filters.status !== 'all'){
+      out += '<span class="status-chip">Showing: '+esc(statusLabel(filters.status))+' <button type="button" data-action="clear-status" aria-label="Clear status filter">&times;</button></span>';
+    }
+    out += '</div>';
+
+    if(!state.audits.length){
+      out += '<div class="card empty-state"><h2 class="section-title">No audits yet</h2><p class="section-sub">Submit your first call audit to populate this dashboard.</p></div>';
+      return out;
+    }
+
+    var total = list.length;
+    var avg = total ? Math.round(list.reduce(function(s,a){return s+a.score;},0)/total) : 0;
+    var fatalCount = list.filter(function(a){return a.fatal;}).length;
+    var passCount = list.filter(function(a){return !a.fatal && a.score>=PASS_THRESHOLD;}).length;
+    var passRate = total ? Math.round(passCount/total*100) : 0;
+
+    out += '<div class="stat-grid">';
+    out += statTile('Total audits', total, 'all');
+    out += statTile('Average score', avg+'/100', 'all');
+    out += statTile('Pass rate', passRate+'%', 'pass');
+    out += statTile('Fatal audits', fatalCount, 'fatal');
+    out += '</div>';
+
+    out += renderAgentTable(list);
+    out += renderAuditsTable(list);
+    return out;
+  }
+
+  function filterField(label, html){
+    return '<div class="field"><label>'+label+'</label>'+html+'</div>';
+  }
+
+  function auditorFilterSelect(){
+    var out = '<select data-field="filter-auditor">';
+    out += '<option value="All"'+(filters.auditor==='All'?' selected':'')+'>All auditors</option>';
+    distinctAuditors().forEach(function(a){
+      out += '<option value="'+esc(a)+'"'+(filters.auditor===a?' selected':'')+'>'+esc(a)+'</option>';
+    });
+    out += '</select>';
+    return out;
+  }
+
+  function agentFilterSelect(){
+    var out = '<select data-field="filter-agent">';
+    out += '<option value="All"'+(filters.agent==='All'?' selected':'')+'>All agents</option>';
+    AGENTS.forEach(function(a){
+      out += '<option value="'+esc(a)+'"'+(filters.agent===a?' selected':'')+'>'+esc(a)+'</option>';
+    });
+    out += '</select>';
+    return out;
+  }
+
+  function statTile(label, value, statusValue){
+    var active = filters.status === statusValue && statusValue !== 'all';
+    return '<button type="button" class="card stat-tile clickable'+(active?' active':'')+'" data-action="filter-status" data-status="'+statusValue+'">'
+      + '<div class="stat-label">'+esc(label)+'</div>'
+      + '<div class="stat-value mono">'+esc(value)+'</div>'
+      + '<div class="stat-hint">View &amp; download data ↓</div>'
+      + '</button>';
+  }
+
+  function renderAgentTable(list){
+    var byAgent = {};
+    list.forEach(function(a){
+      if(!byAgent[a.agent]) byAgent[a.agent] = [];
+      byAgent[a.agent].push(a);
+    });
+    var rows = Object.keys(byAgent).map(function(agent){
+      var arr = byAgent[agent];
+      var avg = Math.round(arr.reduce(function(s,a){return s+a.score;},0)/arr.length);
+      var fatal = arr.filter(function(a){return a.fatal;}).length;
+      return {agent:agent, count:arr.length, avg:avg, fatal:fatal};
+    }).sort(function(a,b){ return b.avg-a.avg; });
+
+    if(!rows.length) return '';
+
+    var out = '<div class="card agent-table">';
+    out += '<h2 class="section-title">Agent-wise performance</h2><p class="section-sub">Average weighted score across audits matching the current filters.</p>';
+    out += '<div class="agent-row head"><div>Agent</div><div>Audits</div><div>Fatal</div><div>Average score</div></div>';
+    rows.forEach(function(r){
+      var active = filters.agent === r.agent;
+      out += '<button type="button" class="agent-row clickable'+(active?' active':'')+'" data-action="filter-agent-drill" data-agent="'+esc(r.agent)+'" title="View & download '+esc(r.agent)+'\'s audits">'
+        + '<div>'+esc(r.agent)+'</div>'
+        + '<div class="mono">'+r.count+'</div>'
+        + '<div class="mono">'+r.fatal+'</div>'
+        + '<div><div class="bar-track"><div class="bar-fill" style="width:'+r.avg+'%;'+(r.avg<PASS_THRESHOLD?'background:var(--warning);':'')+'"></div></div></div>'
+        + '</button>';
+    });
+    out += '</div>';
+    return out;
+  }
+
+  function renderAuditsTable(list){
+    var out = '<div class="card" id="audit-log-anchor" style="padding:20px;scroll-margin-top:88px;">';
+    out += '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:14px;flex-wrap:wrap;">';
+    out += '<div><h2 class="section-title">Audit log</h2><p class="section-sub" style="margin-bottom:0;">'+list.length+' audit(s) match the current filters — export pulls exactly this set.</p></div>';
+    out += '<div style="display:flex;gap:8px;">'
+      + '<button type="button" class="pill-btn" data-action="export-csv"'+(list.length?'':' disabled')+'>Export CSV</button>'
+      + '<button type="button" class="pill-btn" data-action="export-json"'+(list.length?'':' disabled')+'>Export JSON</button>'
+      + '</div></div>';
+    out += '<div class="table-wrap" style="margin-top:14px;"><table class="audits"><thead><tr>'
+      + '<th>Call date</th><th>Audit date</th><th>Auditor</th><th>Agent</th><th>Ticket</th><th>Score</th><th>Status</th><th></th><th></th>'
+      + '</tr></thead><tbody>';
+    list.forEach(function(a){
+      var st = statusOf(a);
+      out += '<tr>'
+        + '<td class="mono">'+esc(a.date)+'</td>'
+        + '<td class="mono">'+esc(a.auditDate||'—')+'</td>'
+        + '<td>'+esc(a.auditor)+'</td>'
+        + '<td>'+esc(a.agent)+'</td>'
+        + '<td>'+esc(a.ticketId||'—')+'</td>'
+        + '<td class="mono">'+a.score+'/100</td>'
+        + '<td><span class="status-badge '+st.cls+'">'+st.label+'</span></td>'
+        + '<td><button type="button" class="link-btn" data-action="toggle-expand" data-id="'+a.id+'">'+(expanded[a.id]?'Hide':'Details')+'</button></td>'
+        + '<td><button type="button" class="link-btn danger" data-action="delete-audit" data-id="'+a.id+'">Delete</button></td>'
+        + '</tr>';
+      if(expanded[a.id]){
+        out += '<tr class="detail-row"><td colspan="9">'+renderAuditDetail(a)+'</td></tr>';
+      }
+    });
+    out += '</tbody></table></div></div>';
+    return out;
+  }
+
+  function renderAuditDetail(a){
+    var out = '<div class="detail-grid">';
+    a.ratings.forEach(function(r){
+      out += '<div class="detail-item"><div class="p">'+esc(r.param)+'</div><div><strong>'+esc(r.question)+'</strong></div>'
+        + '<div style="margin-top:6px;">Rating: <strong>'+esc(r.rating)+'</strong>'+(r.weight?(' · '+r.weight+' pts'):'')+'</div>'
+        + (r.reason ? '<div style="margin-top:4px;color:var(--text-muted);">Reason: '+esc(r.reason)+'</div>' : '')
+        + (r.comment ? '<div style="margin-top:2px;color:var(--text-muted);">Comment: '+esc(r.comment)+'</div>' : '')
+        + '</div>';
+    });
+    out += '</div>';
+    if(a.summary) out += '<div class="detail-note"><b>Call summary</b>'+esc(a.summary)+'</div>';
+    if(a.improvement) out += '<div class="detail-note"><b>Areas of improvement</b>'+esc(a.improvement)+'</div>';
+    if(a.fatalFeedback) out += '<div class="detail-note"><b>Fatal feedback</b>'+esc(a.fatalFeedback)+'</div>';
+    return out;
+  }
+
+  // ---------- validation & submit ----------
+
+  function validate(fs){
+    var errs = [];
+    if(!fs.meta.auditor.trim()) errs.push('Auditor name is required.');
+    if(!fs.meta.agent) errs.push('Please select an agent.');
+    if(!fs.meta.date) errs.push('Please select a call date.');
+    if(!fs.meta.auditDate) errs.push('Please select an audit date.');
+    fs.ratings.forEach(function(r, i){
+      if(!r.rating) errs.push('Please rate: "'+PARAMS[i].question+'".');
+      else if(r.rating!=='Yes' && !r.reason.trim()) errs.push('Reason required for: "'+PARAMS[i].question+'".');
+    });
+    var res = computeScore(fs.ratings);
+    if(res.fatal && !fs.meta.fatalFeedback.trim()) errs.push('Fatal Feedback is required when a Fatal / ZTP breach is marked.');
+    return errs;
+  }
+
+  function submitAudit(){
+    var errs = validate(formState);
+    if(errs.length){
+      formState.error = errs.join(' ');
+      render();
+      return;
+    }
+    var res = computeScore(formState.ratings);
+    var audit = {
+      id: uid(),
+      date: formState.meta.date,
+      auditDate: formState.meta.auditDate,
+      auditor: formState.meta.auditor.trim(),
+      agent: formState.meta.agent,
+      ticketId: formState.meta.ticketId.trim(),
+      ratings: formState.ratings.map(function(r,i){
+        return {param:PARAMS[i].group, question:PARAMS[i].question, weight:PARAMS[i].weight, rating:r.rating, reason:r.reason.trim(), comment:r.comment.trim()};
+      }),
+      score: res.score,
+      fatal: res.fatal,
+      summary: formState.meta.summary.trim(),
+      improvement: formState.meta.improvement.trim(),
+      fatalFeedback: formState.meta.fatalFeedback.trim(),
+      submittedAt: new Date().toISOString()
+    };
+    var newState = {audits: state.audits.concat([audit])};
+    formState = freshFormState();
+    activeTab = 'dashboard';
+    toast('Audit saved — score '+res.score+'/100'+(res.fatal?' (Fatal)':'.'));
+    persist(newState);
+  }
+
+  // ---------- events ----------
+
+  function scrollToAuditLog(){
+    var el = document.getElementById('audit-log-anchor');
+    if(el) el.scrollIntoView({behavior:'smooth', block:'start'});
+  }
+
+  function handleRate(idx, value, btnEl){
+    formState.ratings[idx].rating = value;
+    var group = btnEl.parentElement;
+    Array.prototype.forEach.call(group.children, function(b){ b.classList.remove('seg-active'); });
+    btnEl.classList.add('seg-active');
+    var pv = document.getElementById('score-preview');
+    if(pv) pv.innerHTML = scorePreviewHTML(computeScore(formState.ratings));
+  }
+
+  appEl.addEventListener('click', function(e){
+    var actionEl = e.target.closest('[data-action]');
+    if(!actionEl) return;
+    var action = actionEl.getAttribute('data-action');
+    if(action==='tab'){ activeTab = actionEl.getAttribute('data-tab'); render(); }
+    else if(action==='rate'){ handleRate(parseInt(actionEl.getAttribute('data-idx'),10), actionEl.getAttribute('data-value'), actionEl); }
+    else if(action==='submit-audit'){ submitAudit(); }
+    else if(action==='reset-form'){ formState = freshFormState(); render(); }
+    else if(action==='clear-filters'){ filters = {from:'',to:'',auditor:'All',agent:'All',status:'all'}; render(); }
+    else if(action==='filter-status'){
+      var s = actionEl.getAttribute('data-status');
+      filters.status = (filters.status===s && s!=='all') ? 'all' : s;
+      render(); scrollToAuditLog();
+    }
+    else if(action==='filter-agent-drill'){
+      var ag = actionEl.getAttribute('data-agent');
+      filters.agent = (filters.agent===ag) ? 'All' : ag;
+      filters.status = 'all';
+      render(); scrollToAuditLog();
+    }
+    else if(action==='clear-status'){ filters.status='all'; render(); }
+    else if(action==='toggle-expand'){ var id = actionEl.getAttribute('data-id'); expanded[id] = !expanded[id]; render(); }
+    else if(action==='delete-audit'){
+      var delId = actionEl.getAttribute('data-id');
+      if(window.confirm('Delete this audit? This cannot be undone.')){
+        persist({audits: state.audits.filter(function(a){ return a.id !== delId; })});
+      }
+    }
+    else if(action==='export-csv'){ exportFile(exportFilename('csv'), buildCSV(filteredAudits()), 'text/csv'); }
+    else if(action==='export-json'){ exportFile(exportFilename('json'), buildJSON(filteredAudits()), 'application/json'); }
+  });
+
+  appEl.addEventListener('input', function(e){
+    var field = e.target.getAttribute('data-field');
+    if(!field) return;
+    if(field==='reason' || field==='comment'){
+      var idx = parseInt(e.target.getAttribute('data-idx'),10);
+      formState.ratings[idx][field] = e.target.value;
+    }else if(field==='auditor' || field==='ticketId' || field==='summary' || field==='improvement' || field==='fatalFeedback'){
+      formState.meta[field] = e.target.value;
+    }
+  });
+
+  appEl.addEventListener('change', function(e){
+    var field = e.target.getAttribute('data-field');
+    if(!field) return;
+    if(field==='agent' || field==='date' || field==='auditDate'){ formState.meta[field] = e.target.value; return; }
+    if(field==='filter-from'){ filters.from = e.target.value; render(); return; }
+    if(field==='filter-to'){ filters.to = e.target.value; render(); return; }
+    if(field==='filter-auditor'){ filters.auditor = e.target.value; render(); return; }
+    if(field==='filter-agent'){ filters.agent = e.target.value; render(); return; }
+  });
+
+  render();
+  probeSync();
+}
+appMain({"audits": [{"id": "demo_1", "date": "2026-08-24", "auditDate": "2026-08-24", "auditor": "Sample Auditor", "agent": "amar.shankar@wiom.in", "ticketId": "SAMPLE-001", "ratings": [{"param": "Standardization", "question": "Adherence to Call opening", "weight": 5, "rating": "Yes", "reason": "", "comment": ""}, {"param": "Standardization", "question": "Adherence to Call closing", "weight": 5, "rating": "Yes", "reason": "", "comment": ""}, {"param": "Soft Skills", "question": "Effective probing/Attentiveness", "weight": 8, "rating": "Yes", "reason": "", "comment": ""}, {"param": "Soft Skills", "question": "Tone & Courtesy", "weight": 8, "rating": "Yes", "reason": "", "comment": ""}, {"param": "Soft Skills", "question": "Active Listening & Communication", "weight": 8, "rating": "Yes", "reason": "", "comment": ""}, {"param": "Soft Skills", "question": "Hold/Mute Protocol", "weight": 8, "rating": "Yes", "reason": "", "comment": ""}, {"param": "Soft Skills", "question": "Reassurance/Empathy", "weight": 8, "rating": "Yes", "reason": "", "comment": ""}, {"param": "Resolution & Process Adherence", "question": "Accurate and Complete resolution provided", "weight": 10, "rating": "Yes", "reason": "", "comment": ""}, {"param": "Resolution & Process Adherence", "question": "SOP Followed: Were document/link requests and refund steps handled as per SOP", "weight": 10, "rating": "Yes", "reason": "", "comment": ""}, {"param": "Tool Management / Documentation", "question": "Did the agent update the internal notes", "weight": 10, "rating": "Yes", "reason": "", "comment": ""}, {"param": "Tool Management / Documentation", "question": "Ticket protocol adhered", "weight": 10, "rating": "Yes", "reason": "", "comment": ""}, {"param": "CSAT Triggered", "question": "Was customer asked to give rating", "weight": 10, "rating": "Yes", "reason": "", "comment": ""}, {"param": "Compliance", "question": "Agent did not fall under ZTP parameter", "weight": 0, "rating": "Yes", "reason": "", "comment": ""}], "score": 100, "fatal": false, "summary": "Customer asked about a delayed refund; agent confirmed status and next steps.", "improvement": "", "fatalFeedback": "", "submittedAt": "2026-08-24T10:15:00.000Z"}, {"id": "demo_2", "date": "2026-08-23", "auditDate": "2026-08-23", "auditor": "Sample Auditor", "agent": "deepak@wiom.in", "ticketId": "SAMPLE-002", "ratings": [{"param": "Standardization", "question": "Adherence to Call opening", "weight": 5, "rating": "Yes", "reason": "", "comment": ""}, {"param": "Standardization", "question": "Adherence to Call closing", "weight": 5, "rating": "Yes", "reason": "", "comment": ""}, {"param": "Soft Skills", "question": "Effective probing/Attentiveness", "weight": 8, "rating": "No", "reason": "Sample note for preview purposes.", "comment": ""}, {"param": "Soft Skills", "question": "Tone & Courtesy", "weight": 8, "rating": "Yes", "reason": "", "comment": ""}, {"param": "Soft Skills", "question": "Active Listening & Communication", "weight": 8, "rating": "Yes", "reason": "", "comment": ""}, {"param": "Soft Skills", "question": "Hold/Mute Protocol", "weight": 8, "rating": "Yes", "reason": "", "comment": ""}, {"param": "Soft Skills", "question": "Reassurance/Empathy", "weight": 8, "rating": "Yes", "reason": "", "comment": ""}, {"param": "Resolution & Process Adherence", "question": "Accurate and Complete resolution provided", "weight": 10, "rating": "No", "reason": "Sample note for preview purposes.", "comment": ""}, {"param": "Resolution & Process Adherence", "question": "SOP Followed: Were document/link requests and refund steps handled as per SOP", "weight": 10, "rating": "Yes", "reason": "", "comment": ""}, {"param": "Tool Management / Documentation", "question": "Did the agent update the internal notes", "weight": 10, "rating": "Yes", "reason": "", "comment": ""}, {"param": "Tool Management / Documentation", "question": "Ticket protocol adhered", "weight": 10, "rating": "Yes", "reason": "", "comment": ""}, {"param": "CSAT Triggered", "question": "Was customer asked to give rating", "weight": 10, "rating": "Yes", "reason": "", "comment": ""}, {"param": "Compliance", "question": "Agent did not fall under ZTP parameter", "weight": 0, "rating": "Yes", "reason": "", "comment": ""}], "score": 82, "fatal": false, "summary": "Billing dispute regarding double charge on plan renewal.", "improvement": "Agent should probe more before offering a resolution; confirm the fix actually resolves the charge.", "fatalFeedback": "", "submittedAt": "2026-08-23T11:40:00.000Z"}, {"id": "demo_3", "date": "2026-08-22", "auditDate": "2026-08-22", "auditor": "Sample Auditor", "agent": "hitesh.kumar@wiom.in", "ticketId": "SAMPLE-003", "ratings": [{"param": "Standardization", "question": "Adherence to Call opening", "weight": 5, "rating": "Yes", "reason": "", "comment": ""}, {"param": "Standardization", "question": "Adherence to Call closing", "weight": 5, "rating": "Yes", "reason": "", "comment": ""}, {"param": "Soft Skills", "question": "Effective probing/Attentiveness", "weight": 8, "rating": "Yes", "reason": "", "comment": ""}, {"param": "Soft Skills", "question": "Tone & Courtesy", "weight": 8, "rating": "Yes", "reason": "", "comment": ""}, {"param": "Soft Skills", "question": "Active Listening & Communication", "weight": 8, "rating": "Yes", "reason": "", "comment": ""}, {"param": "Soft Skills", "question": "Hold/Mute Protocol", "weight": 8, "rating": "Yes", "reason": "", "comment": ""}, {"param": "Soft Skills", "question": "Reassurance/Empathy", "weight": 8, "rating": "Yes", "reason": "", "comment": ""}, {"param": "Resolution & Process Adherence", "question": "Accurate and Complete resolution provided", "weight": 10, "rating": "Yes", "reason": "", "comment": ""}, {"param": "Resolution & Process Adherence", "question": "SOP Followed: Were document/link requests and refund steps handled as per SOP", "weight": 10, "rating": "Yes", "reason": "", "comment": ""}, {"param": "Tool Management / Documentation", "question": "Did the agent update the internal notes", "weight": 10, "rating": "Yes", "reason": "", "comment": ""}, {"param": "Tool Management / Documentation", "question": "Ticket protocol adhered", "weight": 10, "rating": "Fatal", "reason": "Sample note for preview purposes.", "comment": ""}, {"param": "CSAT Triggered", "question": "Was customer asked to give rating", "weight": 10, "rating": "Yes", "reason": "", "comment": ""}, {"param": "Compliance", "question": "Agent did not fall under ZTP parameter", "weight": 0, "rating": "Yes", "reason": "", "comment": ""}], "score": 0, "fatal": true, "summary": "Router replacement request; ticket was not updated after the call.", "improvement": "", "fatalFeedback": "Ticket protocol was not followed — no ticket was raised for the replacement, breaching ZTP.", "submittedAt": "2026-08-22T09:05:00.000Z"}, {"id": "demo_4", "date": "2026-08-21", "auditDate": "2026-08-21", "auditor": "Sample Auditor", "agent": "noor.ahmad@wiom.in", "ticketId": "SAMPLE-004", "ratings": [{"param": "Standardization", "question": "Adherence to Call opening", "weight": 5, "rating": "Yes", "reason": "", "comment": ""}, {"param": "Standardization", "question": "Adherence to Call closing", "weight": 5, "rating": "Yes", "reason": "", "comment": ""}, {"param": "Soft Skills", "question": "Effective probing/Attentiveness", "weight": 8, "rating": "Yes", "reason": "", "comment": ""}, {"param": "Soft Skills", "question": "Tone & Courtesy", "weight": 8, "rating": "No", "reason": "Sample note for preview purposes.", "comment": ""}, {"param": "Soft Skills", "question": "Active Listening & Communication", "weight": 8, "rating": "Yes", "reason": "", "comment": ""}, {"param": "Soft Skills", "question": "Hold/Mute Protocol", "weight": 8, "rating": "Yes", "reason": "", "comment": ""}, {"param": "Soft Skills", "question": "Reassurance/Empathy", "weight": 8, "rating": "Yes", "reason": "", "comment": ""}, {"param": "Resolution & Process Adherence", "question": "Accurate and Complete resolution provided", "weight": 10, "rating": "No", "reason": "Sample note for preview purposes.", "comment": ""}, {"param": "Resolution & Process Adherence", "question": "SOP Followed: Were document/link requests and refund steps handled as per SOP", "weight": 10, "rating": "No", "reason": "Sample note for preview purposes.", "comment": ""}, {"param": "Tool Management / Documentation", "question": "Did the agent update the internal notes", "weight": 10, "rating": "No", "reason": "Sample note for preview purposes.", "comment": ""}, {"param": "Tool Management / Documentation", "question": "Ticket protocol adhered", "weight": 10, "rating": "Yes", "reason": "", "comment": ""}, {"param": "CSAT Triggered", "question": "Was customer asked to give rating", "weight": 10, "rating": "Yes", "reason": "", "comment": ""}, {"param": "Compliance", "question": "Agent did not fall under ZTP parameter", "weight": 0, "rating": "Yes", "reason": "", "comment": ""}], "score": 62, "fatal": false, "summary": "Connectivity complaint; agent walked through basic troubleshooting.", "improvement": "Tone was curt at times; SOP steps for escalation were skipped and internal notes were incomplete.", "fatalFeedback": "", "submittedAt": "2026-08-21T14:20:00.000Z"}, {"id": "demo_5", "date": "2026-08-20", "auditDate": "2026-08-20", "auditor": "Sample Auditor", "agent": "amar.shankar@wiom.in", "ticketId": "SAMPLE-005", "ratings": [{"param": "Standardization", "question": "Adherence to Call opening", "weight": 5, "rating": "Yes", "reason": "", "comment": ""}, {"param": "Standardization", "question": "Adherence to Call closing", "weight": 5, "rating": "Yes", "reason": "", "comment": ""}, {"param": "Soft Skills", "question": "Effective probing/Attentiveness", "weight": 8, "rating": "Yes", "reason": "", "comment": ""}, {"param": "Soft Skills", "question": "Tone & Courtesy", "weight": 8, "rating": "Yes", "reason": "", "comment": ""}, {"param": "Soft Skills", "question": "Active Listening & Communication", "weight": 8, "rating": "Yes", "reason": "", "comment": ""}, {"param": "Soft Skills", "question": "Hold/Mute Protocol", "weight": 8, "rating": "Yes", "reason": "", "comment": ""}, {"param": "Soft Skills", "question": "Reassurance/Empathy", "weight": 8, "rating": "Yes", "reason": "", "comment": ""}, {"param": "Resolution & Process Adherence", "question": "Accurate and Complete resolution provided", "weight": 10, "rating": "Yes", "reason": "", "comment": ""}, {"param": "Resolution & Process Adherence", "question": "SOP Followed: Were document/link requests and refund steps handled as per SOP", "weight": 10, "rating": "Yes", "reason": "", "comment": ""}, {"param": "Tool Management / Documentation", "question": "Did the agent update the internal notes", "weight": 10, "rating": "Yes", "reason": "", "comment": ""}, {"param": "Tool Management / Documentation", "question": "Ticket protocol adhered", "weight": 10, "rating": "Yes", "reason": "", "comment": ""}, {"param": "CSAT Triggered", "question": "Was customer asked to give rating", "weight": 10, "rating": "Yes", "reason": "", "comment": ""}, {"param": "Compliance", "question": "Agent did not fall under ZTP parameter", "weight": 0, "rating": "Yes", "reason": "", "comment": ""}], "score": 100, "fatal": false, "summary": "Plan upgrade request handled end-to-end on the call.", "improvement": "", "fatalFeedback": "", "submittedAt": "2026-08-20T16:50:00.000Z"}]});
+</script>
+</body>
+</html>
