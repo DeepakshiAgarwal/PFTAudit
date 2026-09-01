@@ -162,12 +162,6 @@
 '.toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:var(--text);color:var(--bg);padding:12px 20px;border-radius:999px;font-size:13px;font-weight:600;box-shadow:var(--shadow);z-index:50;}',
 '.req-star{color:var(--danger);}',
 '.seg-btn.seg-active.seg-na{background:var(--surface-2);border-color:var(--text-muted);color:var(--text-muted);}',
-'.email-draft{padding:20px;margin-bottom:20px;border-color:var(--accent);}',
-'.email-preview{background:var(--surface-2);border:1px solid var(--border);border-radius:8px;padding:14px 16px;margin-top:12px;font-size:12.5px;line-height:1.6;}',
-'.email-preview div{margin-bottom:6px;}',
-'.email-body{white-space:pre-wrap;margin-top:8px;color:var(--text-muted);font-family:"IBM Plex Mono",ui-monospace,monospace;font-size:12px;}',
-'.modal-overlay{position:fixed;inset:0;background:rgba(15,10,25,0.55);display:flex;align-items:center;justify-content:center;z-index:60;padding:20px;}',
-'.modal-card{max-width:560px;width:100%;max-height:85vh;overflow-y:auto;margin:0;}',
 '.category-matrix td.cell-good{background:var(--success-soft);color:var(--success);font-weight:600;}',
 '.category-matrix td.cell-mid{background:var(--warning-soft);color:var(--warning);font-weight:600;}',
 '.category-matrix td.cell-bad{background:var(--danger-soft);color:var(--danger);font-weight:600;}'
@@ -238,7 +232,6 @@
   var toastMsg = '';
   var toastTimer = null;
   var formState = freshFormState();
-  var lastEmailDraft = null;
 
   var appEl = document.getElementById('app');
 
@@ -323,7 +316,7 @@
   }
 
   async function saveAuditRemote(audit){
-    if(!apiConfigured()) return false;
+    if(!apiConfigured()) return {ok:false};
     try{
       var res = await fetch(API_URL, {
         method: 'POST',
@@ -331,8 +324,8 @@
         body: JSON.stringify(audit)
       });
       if(!res.ok) throw new Error('bad status');
-      return true;
-    }catch(e){ return false; }
+      return await res.json();
+    }catch(e){ return {ok:false}; }
   }
 
   async function deleteAuditRemote(id){
@@ -348,12 +341,25 @@
     }catch(e){ return false; }
   }
 
+  async function notifySlackRemote(id){
+    if(!apiConfigured()) return false;
+    try{
+      var res = await fetch(API_URL, {
+        method: 'POST',
+        headers: {'Content-Type': 'text/plain;charset=utf-8'},
+        body: JSON.stringify({action:'notify', id:id})
+      });
+      if(!res.ok) return false;
+      var data = await res.json();
+      return !!(data && data.ok && data.slack);
+    }catch(e){ return false; }
+  }
+
   // ---------- rendering ----------
 
   function render(){
     var html = renderHeader() + '<div class="wrap">'
       + renderSetupBanner()
-      + renderEmailDraftCard()
       + (activeTab==='submit' ? renderSubmitTab() : renderDashboardTab())
       + '</div>'
       + (toastMsg ? '<div class="toast">'+esc(toastMsg)+'</div>' : '');
@@ -370,51 +376,6 @@
     return '';
   }
 
-  function buildEmailDraft(audit){
-    var nonYes = audit.ratings.filter(function(r){ return r.rating==='No' || r.rating==='Fatal'; });
-    var subject = 'Call Quality Audit Feedback — '+audit.date+' — Score '+audit.score+'/100'+(audit.fatal?' (Fatal)':'');
-    var lines = [];
-    lines.push('Hi,');
-    lines.push('');
-    lines.push('Here is the quality audit feedback for your call on '+audit.date+' (Ticket: '+(audit.ticketId||'N/A')+').');
-    lines.push('');
-    lines.push('Overall score: '+audit.score+'/100'+(audit.fatal?' — FATAL / ZTP breach':''));
-    if(nonYes.length){
-      lines.push('');
-      lines.push('Areas flagged:');
-      nonYes.forEach(function(r){
-        lines.push('- ['+ratingLabel(r.rating)+'] '+r.question+(r.reason?(': '+r.reason):''));
-      });
-    }
-    if(audit.improvement){ lines.push(''); lines.push('Areas of improvement: '+audit.improvement); }
-    if(audit.fatalFeedback){ lines.push(''); lines.push('Fatal feedback: '+audit.fatalFeedback); }
-    lines.push('');
-    lines.push('Auditor: '+audit.auditor);
-    return {to: audit.agent, subject: subject, body: lines.join('\n')};
-  }
-
-  function renderEmailDraftCard(){
-    if(!lastEmailDraft) return '';
-    var d = lastEmailDraft;
-    var mailtoHref = 'mailto:'+encodeURIComponent(d.to)+'?subject='+encodeURIComponent(d.subject)+'&body='+encodeURIComponent(d.body);
-    return '<div class="modal-overlay">'
-      + '<div class="card email-draft modal-card">'
-      + '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;">'
-      + '<div><h2 class="section-title">Email feedback to '+esc(d.to)+'</h2><p class="section-sub" style="margin-bottom:0;">Copy this draft into your email client, or try opening it directly.</p></div>'
-      + '<button type="button" class="link-btn" data-action="dismiss-email-draft" aria-label="Dismiss">&times;</button>'
-      + '</div>'
-      + '<div class="email-preview">'
-        + '<div><b>To:</b> '+esc(d.to)+'</div>'
-        + '<div><b>Subject:</b> '+esc(d.subject)+'</div>'
-        + '<div class="email-body">'+esc(d.body)+'</div>'
-      + '</div>'
-      + '<div class="actions" style="margin-top:14px;">'
-        + '<button type="button" class="btn btn-primary" data-action="copy-email-draft">Copy email draft</button>'
-        + '<a class="btn btn-ghost" style="text-decoration:none;display:inline-flex;align-items:center;" href="'+mailtoHref+'" target="_blank" rel="noopener">Open in email app</a>'
-      + '</div>'
-      + '</div>'
-      + '</div>';
-  }
 
   function syncBadge(){
     if(syncStatus==='synced') return '<span class="badge badge-synced"><span class="badge-dot"></span>Synced</span>';
@@ -787,7 +748,7 @@
         + '<td class="mono">'+a.score+'/100</td>'
         + '<td><span class="status-badge '+st.cls+'">'+st.label+'</span></td>'
         + '<td><button type="button" class="link-btn" data-action="toggle-expand" data-id="'+a.id+'">'+(expanded[a.id]?'Hide':'Details')+'</button></td>'
-        + '<td><button type="button" class="link-btn" data-action="email-audit" data-id="'+a.id+'">Email</button></td>'
+        + '<td><button type="button" class="link-btn" data-action="notify-slack" data-id="'+a.id+'">Send to Slack</button></td>'
         + '<td><button type="button" class="link-btn danger" data-action="delete-audit" data-id="'+a.id+'">Delete</button></td>'
         + '</tr>';
       if(expanded[a.id]){
@@ -859,11 +820,16 @@
     state.audits = state.audits.concat([audit]);
     formState = freshFormState();
     activeTab = 'dashboard';
-    lastEmailDraft = buildEmailDraft(audit);
     render();
-    saveAuditRemote(audit).then(function(ok){
-      if(ok){ toast('Audit saved — score '+res.score+'/100'+(res.fatal?' (Fatal)':'.')); }
-      else { toast('Saved on this device only — could not reach the server. Click Refresh once you are back online.'); }
+    saveAuditRemote(audit).then(function(result){
+      if(!result || !result.ok){
+        toast('Saved on this device only — could not reach the server. Click Refresh once you are back online.');
+        return;
+      }
+      var base = 'Audit saved — score '+res.score+'/100'+(res.fatal?' (Fatal).':'.');
+      if(result.slack === true) toast(base+' Posted to Slack.');
+      else if(result.slack === false) toast(base+' Could not post to Slack — check the webhook setup.');
+      else toast(base);
     });
   }
 
@@ -884,7 +850,6 @@
   }
 
   appEl.addEventListener('click', function(e){
-    if(e.target.classList && e.target.classList.contains('modal-overlay')){ lastEmailDraft = null; render(); return; }
     var actionEl = e.target.closest('[data-action]');
     if(!actionEl) return;
     var action = actionEl.getAttribute('data-action');
@@ -923,17 +888,11 @@
     }
     else if(action==='copy-csv'){ copyToClipboard('CSV data', buildCSV(filteredAudits())); }
     else if(action==='copy-json'){ copyToClipboard('JSON data', buildJSON(filteredAudits())); }
-    else if(action==='dismiss-email-draft'){ lastEmailDraft = null; render(); }
-    else if(action==='copy-email-draft'){
-      if(lastEmailDraft){
-        var d = lastEmailDraft;
-        copyToClipboard('Email draft', 'To: '+d.to+'\nSubject: '+d.subject+'\n\n'+d.body);
-      }
-    }
-    else if(action==='email-audit'){
-      var eid = actionEl.getAttribute('data-id');
-      var found = state.audits.filter(function(x){ return x.id===eid; })[0];
-      if(found){ lastEmailDraft = buildEmailDraft(found); render(); window.scrollTo({top:0, behavior:'smooth'}); }
+    else if(action==='notify-slack'){
+      var nid = actionEl.getAttribute('data-id');
+      notifySlackRemote(nid).then(function(ok){
+        toast(ok ? 'Sent to Slack.' : 'Could not send to Slack — check the webhook is set up.');
+      });
     }
     else if(action==='import-audits'){
       var ta = document.getElementById('import-textarea');
@@ -952,8 +911,9 @@
       (async function(){
         var okCount = 0;
         for(var i=0;i<toImport.length;i++){
-          var ok = await saveAuditRemote(toImport[i]);
-          if(ok) okCount++;
+          var payload = Object.assign({}, toImport[i], {silent:true});
+          var result = await saveAuditRemote(payload);
+          if(result && result.ok) okCount++;
         }
         await loadAudits();
         toast('Imported ' + okCount + ' of ' + toImport.length + ' audit(s).');
@@ -990,10 +950,6 @@
     if(field==='filter-to'){ filters.to = e.target.value; render(); return; }
     if(field==='filter-auditor'){ filters.auditor = e.target.value; render(); return; }
     if(field==='filter-agent'){ filters.agent = e.target.value; render(); return; }
-  });
-
-  document.addEventListener('keydown', function(e){
-    if(e.key==='Escape' && lastEmailDraft){ lastEmailDraft = null; render(); }
   });
 
   render();
