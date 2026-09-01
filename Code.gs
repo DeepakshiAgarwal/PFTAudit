@@ -17,12 +17,23 @@ function getSheet(){
     sheet = ss.insertSheet('Audits');
     sheet.appendRow(HEADERS);
   }
+  // Force every data column to Plain Text so Sheets never auto-converts
+  // date-like strings (e.g. "2026-08-31") into real Date cells, which
+  // would shift the value by the sheet's timezone offset.
+  sheet.getRange(1, 1, Math.max(sheet.getMaxRows(), 2000), HEADERS.length).setNumberFormat('@');
   return sheet;
 }
 
 function jsonOut(obj){
   return ContentService.createTextOutput(JSON.stringify(obj))
     .setMimeType(ContentService.MimeType.JSON);
+}
+
+function asPlainDate(v){
+  if (Object.prototype.toString.call(v) === '[object Date]') {
+    return Utilities.formatDate(v, Session.getScriptTimeZone(), 'yyyy-MM-dd');
+  }
+  return v;
 }
 
 function doGet(e){
@@ -34,6 +45,8 @@ function doGet(e){
     .map(function(row){
       var obj = {};
       headers.forEach(function(h, i){ obj[h] = row[i]; });
+      obj.date = asPlainDate(obj.date);
+      obj.auditDate = asPlainDate(obj.auditDate);
       try { obj.ratings = JSON.parse(obj.ratings || '[]'); } catch (err) { obj.ratings = []; }
       obj.fatal = (obj.fatal === true || obj.fatal === 'true' || obj.fatal === 'TRUE');
       obj.score = Number(obj.score) || 0;
