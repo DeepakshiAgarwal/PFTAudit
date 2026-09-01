@@ -58,6 +58,9 @@ function rowToAudit(headers, row){
 }
 
 function doGet(e){
+  if (e && e.parameter && e.parameter.test === 'slack') {
+    return jsonOut(testSlackWebhook());
+  }
   var sheet = getSheet();
   var values = sheet.getDataRange().getValues();
   var headers = values.shift();
@@ -65,6 +68,29 @@ function doGet(e){
     .filter(function(row){ return row[0]; })
     .map(function(row){ return rowToAudit(headers, row); });
   return jsonOut({audits: audits});
+}
+
+function testSlackWebhook(){
+  var url = PropertiesService.getScriptProperties().getProperty('SLACK_WEBHOOK_URL');
+  if (!url) {
+    return {configured: false, message: 'SLACK_WEBHOOK_URL script property is not set. Go to Project Settings (gear icon) > Script Properties and add it.'};
+  }
+  try {
+    var resp = UrlFetchApp.fetch(url, {
+      method: 'post',
+      contentType: 'application/json',
+      payload: JSON.stringify({text: '✅ Test message from PFT Quality Audit — if you see this in Slack, the webhook works!'}),
+      muteHttpExceptions: true
+    });
+    return {
+      configured: true,
+      urlPrefix: url.substring(0, 40) + '...',
+      responseCode: resp.getResponseCode(),
+      responseBody: resp.getContentText()
+    };
+  } catch (err) {
+    return {configured: true, urlPrefix: url.substring(0, 40) + '...', error: String(err)};
+  }
 }
 
 function doPost(e){
