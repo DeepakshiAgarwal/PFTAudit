@@ -175,7 +175,7 @@
     'amar.shankar@wiom.in','deepak@wiom.in','dhananjay.shukla@wiom.in',
     'hitesh.kumar@wiom.in','kriti.tiwari@wiom.in','noor.ahmad@wiom.in',
     'pintoo.kumar1@wiom.in','Poonam.singh@wiom.in','rohit.kumar@wiom.in',
-    'vivek.pandey@wiom.in'
+    'sandeep.kumar@wiom.in','vivek.pandey@wiom.in'
   ];
 
   var PARAMS = [
@@ -616,6 +616,8 @@
     out += '</div>';
 
     out += renderAgentTable(list);
+    out += renderAuditorProductivity(state.audits);
+    out += renderAgentQualityTrend(state.audits);
     out += renderCategoryMatrix(list);
     out += renderAuditsTable(list);
     return out;
@@ -693,6 +695,132 @@
         + '</button>';
     });
     out += '</div>';
+    return out;
+  }
+
+  // ---------- week/date helpers for the trend reports ----------
+
+  var WEEKLY_TARGET = 30;
+
+  function startOfWeek(d){
+    var date = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+    var day = date.getDay(); // 0=Sun..6=Sat
+    var diff = (day === 0 ? -6 : 1) - day; // shift back to Monday
+    date.setDate(date.getDate() + diff);
+    return date;
+  }
+
+  function addDays(d, n){
+    var r = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+    r.setDate(r.getDate() + n);
+    return r;
+  }
+
+  function fmtDate(d){
+    return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+  }
+
+  function fmtShort(dateStr){
+    var parts = dateStr.split('-');
+    return parts[1]+'/'+parts[2];
+  }
+
+  // Returns 4 week ranges, index 0 = current week (in progress) .. index 3 = 3 weeks ago.
+  function computeWeekRanges(){
+    var curStart = startOfWeek(new Date());
+    var weeks = [];
+    for(var w=0; w<4; w++){
+      var start = addDays(curStart, -7*w);
+      var end = addDays(start, 6);
+      weeks.push({label: w===0?'Wk0':'Wk-'+w, start: fmtDate(start), end: fmtDate(end)});
+    }
+    return weeks;
+  }
+
+  function computeMTDRange(){
+    var today = new Date();
+    var start = new Date(today.getFullYear(), today.getMonth(), 1);
+    return {start: fmtDate(start), end: fmtDate(today)};
+  }
+
+  function currentWeekDaysSoFar(){
+    var start = startOfWeek(new Date());
+    var today = new Date(new Date().getFullYear(), new Date().getMonth(), new Date().getDate());
+    var labels = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
+    var days = [];
+    for(var i=0;i<7;i++){
+      var d = addDays(start, i);
+      if(d > today) break;
+      days.push({label: labels[i], date: fmtDate(d)});
+    }
+    return days;
+  }
+
+  function scoreCellHTML(avg){
+    if(avg===null) return '<td class="mono">—</td>';
+    var cls = avg>=PASS_THRESHOLD ? 'cell-good' : (avg>=MID_THRESHOLD ? 'cell-mid' : 'cell-bad');
+    return '<td class="mono '+cls+'">'+avg+'</td>';
+  }
+
+  function avgScoreInRange(list, agent, start, end){
+    var rows = list.filter(function(a){ return a.agent===agent && a.auditDate>=start && a.auditDate<=end; });
+    if(!rows.length) return null;
+    return Math.round(rows.reduce(function(s,a){return s+a.score;},0)/rows.length);
+  }
+
+  function renderAuditorProductivity(allAudits){
+    var seen = {};
+    allAudits.forEach(function(a){ seen[a.auditor]=true; });
+    var names = Object.keys(seen).sort();
+    if(!names.length) return '';
+
+    var weeks = computeWeekRanges(); // Wk0, Wk-1, Wk-2, Wk-3
+
+    var out = '<div class="card" style="padding:20px;margin-bottom:20px;">';
+    out += '<h2 class="section-title">Auditor productivity (TL report)</h2><p class="section-sub">Audits completed per week per auditor, by audit date — target '+WEEKLY_TARGET+'/week. Uses all data, independent of the filters above.</p>';
+    out += '<div class="table-wrap"><table class="audits"><thead><tr><th>Auditor</th>';
+    weeks.forEach(function(w){ out += '<th>'+w.label+' ('+fmtShort(w.start)+'–'+fmtShort(w.end)+')</th>'; });
+    out += '<th>Total</th></tr></thead><tbody>';
+    names.forEach(function(name){
+      out += '<tr><td><strong>'+esc(name)+'</strong></td>';
+      var total = 0;
+      weeks.forEach(function(w){
+        var count = allAudits.filter(function(a){ return a.auditor===name && a.auditDate>=w.start && a.auditDate<=w.end; }).length;
+        total += count;
+        var cls = count>=WEEKLY_TARGET ? 'cell-good' : 'cell-bad';
+        out += '<td class="mono '+cls+'">'+count+'</td>';
+      });
+      out += '<td class="mono"><strong>'+total+'</strong></td>';
+      out += '</tr>';
+    });
+    out += '</tbody></table></div></div>';
+    return out;
+  }
+
+  function renderAgentQualityTrend(allAudits){
+    var seen = {};
+    allAudits.forEach(function(a){ seen[a.agent]=true; });
+    var names = Object.keys(seen).sort();
+    if(!names.length) return '';
+
+    var mtd = computeMTDRange();
+    var weeks = computeWeekRanges().slice(1).reverse(); // Wk-3, Wk-2, Wk-1 (chronological)
+    var days = currentWeekDaysSoFar();
+
+    var out = '<div class="card" style="padding:20px;margin-bottom:20px;">';
+    out += '<h2 class="section-title">Agent quality score — trend</h2><p class="section-sub">Average score by period, by audit date — MTD, the last 3 completed weeks, then this week broken into days. Uses all data, independent of the filters above.</p>';
+    out += '<div class="table-wrap"><table class="audits"><thead><tr><th>Agent</th><th>MTD</th>';
+    weeks.forEach(function(w){ out += '<th>'+w.label+'</th>'; });
+    days.forEach(function(d){ out += '<th>'+d.label+'</th>'; });
+    out += '</tr></thead><tbody>';
+    names.forEach(function(name){
+      out += '<tr><td><strong>'+esc(name)+'</strong></td>';
+      out += scoreCellHTML(avgScoreInRange(allAudits, name, mtd.start, mtd.end));
+      weeks.forEach(function(w){ out += scoreCellHTML(avgScoreInRange(allAudits, name, w.start, w.end)); });
+      days.forEach(function(d){ out += scoreCellHTML(avgScoreInRange(allAudits, name, d.date, d.date)); });
+      out += '</tr>';
+    });
+    out += '</tbody></table></div></div>';
     return out;
   }
 
