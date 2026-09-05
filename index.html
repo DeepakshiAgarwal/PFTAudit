@@ -90,12 +90,15 @@
 'textarea{resize:vertical;min-height:64px;}',
 '.group-header{font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--accent);padding:16px 0 8px;border-top:1px solid var(--border);margin-top:6px;}',
 '.group-header:first-of-type{border-top:none;margin-top:0;}',
-'.q-row{display:grid;grid-template-columns:2.2fr 1.4fr 1fr 1fr;gap:12px;align-items:start;padding:12px 0;border-bottom:1px dashed var(--border);}',
+'.q-row{display:grid;grid-template-columns:2fr 1.3fr 1fr 1fr 1fr;gap:12px;align-items:start;padding:12px 0;border-bottom:1px dashed var(--border);}',
 '.q-row:last-child{border-bottom:none;}',
 '@media (max-width:900px){.q-row{grid-template-columns:1fr;}}',
 '.q-text{font-size:13.5px;padding-top:8px;}',
 '.q-weight{display:inline-block;margin-left:6px;font-size:11px;font-weight:600;color:var(--accent);background:var(--accent-soft);padding:2px 7px;border-radius:999px;}',
 '.reason-select{margin-bottom:6px;font-size:12.5px;}',
+'.acpt-select{font-size:12.5px;}',
+'.pareto-bar-wrap{background:var(--surface-2);border-radius:6px;height:16px;overflow:hidden;}',
+'.pareto-bar{background:var(--accent);height:100%;border-radius:6px;}',
 '.seg{display:flex;gap:6px;}',
 '.seg-btn{flex:1;border:1px solid var(--border);background:var(--surface);color:var(--text-muted);font-family:inherit;font-weight:600;font-size:12.5px;padding:8px 6px;border-radius:8px;cursor:pointer;}',
 '.seg-btn.seg-active.seg-yes{background:var(--success-soft);border-color:var(--success);color:var(--success);}',
@@ -224,6 +227,9 @@
     return list;
   })();
 
+  // ACPT = root-cause bucket for a flagged (No/Fatal) rating: Agent / Customer / Process / Training.
+  var ACPT_OPTIONS = ['Agent', 'Customer', 'Process', 'Training'];
+
   var state = {audits: []};
   var syncStatus = 'loading'; // loading | synced | error | unconfigured
   var activeTab = 'submit';
@@ -238,7 +244,7 @@
   function freshFormState(){
     return {
       meta:{auditor:'', agent:'', date:todayStr(), auditDate:todayStr(), ticketId:'', summary:'', improvement:'', fatalFeedback:''},
-      ratings: PARAMS.map(function(){ return {rating:null, reason:'', comment:''}; }),
+      ratings: PARAMS.map(function(){ return {rating:null, reason:'', comment:'', acpt:''}; }),
       error:''
     };
   }
@@ -436,6 +442,7 @@
         + '</div>';
       out += '<div>' + reasonSelect(i, p, r.reason) + '<input type="text" data-field="reason" data-idx="'+i+'" value="'+esc(r.reason)+'" placeholder="Reason (required for No/Fatal)"></div>';
       out += '<input type="text" data-field="comment" data-idx="'+i+'" value="'+esc(r.comment)+'" placeholder="Comments">';
+      out += acptSelect(i, r.acpt);
       out += '</div>';
     });
 
@@ -475,6 +482,16 @@
     out += '<option value="">Select a reason…</option>';
     p.reasons.forEach(function(rs){
       out += '<option value="'+esc(rs)+'"'+(currentReason===rs?' selected':'')+'>'+esc(rs)+'</option>';
+    });
+    out += '</select>';
+    return out;
+  }
+
+  function acptSelect(idx, currentAcpt){
+    var out = '<select data-field="acpt" data-idx="'+idx+'" class="acpt-select">';
+    out += '<option value="">ACPT analysis…</option>';
+    ACPT_OPTIONS.forEach(function(opt){
+      out += '<option value="'+esc(opt)+'"'+(currentAcpt===opt?' selected':'')+'>'+esc(opt)+'</option>';
     });
     out += '</select>';
     return out;
@@ -536,13 +553,13 @@
   }
 
   function buildCSV(list){
-    var headers = ['Call Date','Audit Date','Auditor','Agent','Ticket ID','Parameter','Question','Weightage','Rating','Reason','Comment','Total Score','Fatal','Call Summary','Areas of Improvement','Fatal Feedback','Submitted At'];
+    var headers = ['Call Date','Audit Date','Auditor','Agent','Ticket ID','Parameter','Question','Weightage','Rating','Reason','ACPT Analysis','Comment','Total Score','Fatal','Call Summary','Areas of Improvement','Fatal Feedback','Submitted At'];
     var rows = [headers.join(',')];
     list.forEach(function(a){
       a.ratings.forEach(function(r){
         rows.push([
           a.date, a.auditDate||'', a.auditor, a.agent, a.ticketId||'',
-          r.param, r.question, r.weight, ratingLabel(r.rating), r.reason, r.comment,
+          r.param, r.question, r.weight, ratingLabel(r.rating), r.reason, r.acpt||'', r.comment,
           a.score, a.fatal?'Yes':'No', a.summary, a.improvement, a.fatalFeedback, a.submittedAt
         ].map(csvEscape).join(','));
       });
@@ -617,6 +634,7 @@
     out += renderAuditorProductivity(state.audits);
     out += renderAgentQualityTrend(state.audits);
     out += renderCategoryMatrix(list);
+    out += renderACPTReport(list);
     out += renderAuditsTable(list);
     return out;
   }
@@ -828,6 +846,42 @@
     return out;
   }
 
+  function renderACPTReport(list){
+    if(!list.length) return '';
+    var counts = {};
+    var total = 0;
+    list.forEach(function(a){
+      a.ratings.forEach(function(r){
+        if(r.rating==='No' || r.rating==='Fatal'){
+          var cat = (r.acpt && r.acpt.trim()) ? r.acpt.trim() : 'Unclassified';
+          counts[cat] = (counts[cat]||0) + 1;
+          total++;
+        }
+      });
+    });
+    var out = '<div class="card" style="padding:20px;margin-bottom:20px;">';
+    out += '<h2 class="section-title">ACPT report</h2><p class="section-sub">Root-cause split (Agent / Customer / Process / Training) of flagged (No / Fatal) ratings, sorted by frequency — audits matching the current filters above.</p>';
+    if(!total){
+      out += '<p class="section-sub" style="margin-bottom:0;">No flagged ratings in this selection.</p></div>';
+      return out;
+    }
+    var cats = Object.keys(counts).sort(function(a,b){ return counts[b]-counts[a]; });
+    var maxCount = counts[cats[0]];
+    var running = 0;
+    out += '<div class="table-wrap"><table class="audits"><thead><tr><th>ACPT category</th><th>Count</th><th>% of flags</th><th>Cumulative %</th><th style="width:36%;">Pareto</th></tr></thead><tbody>';
+    cats.forEach(function(cat){
+      var c = counts[cat];
+      var pct = Math.round(c/total*100);
+      running += c;
+      var cumPct = Math.round(running/total*100);
+      var barPct = maxCount ? Math.round(c/maxCount*100) : 0;
+      out += '<tr><td><strong>'+esc(cat)+'</strong></td><td class="mono">'+c+'</td><td class="mono">'+pct+'%</td><td class="mono">'+cumPct+'%</td>'
+        + '<td><div class="pareto-bar-wrap"><div class="pareto-bar" style="width:'+barPct+'%;"></div></div></td></tr>';
+    });
+    out += '</tbody></table></div></div>';
+    return out;
+  }
+
   function renderAuditsTable(list){
     var out = '<div class="card" id="audit-log-anchor" style="padding:20px;scroll-margin-top:88px;">';
     out += '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:14px;flex-wrap:wrap;">';
@@ -867,6 +921,7 @@
       out += '<div class="detail-item"><div class="p">'+esc(r.param)+'</div><div><strong>'+esc(r.question)+'</strong></div>'
         + '<div style="margin-top:6px;">Rating: <strong>'+esc(ratingLabel(r.rating))+'</strong>'+(r.weight?(' · '+r.weight+' pts'):'')+'</div>'
         + (r.reason ? '<div style="margin-top:4px;color:var(--text-muted);">Reason: '+esc(r.reason)+'</div>' : '')
+        + (r.acpt ? '<div style="margin-top:2px;color:var(--text-muted);">ACPT: '+esc(r.acpt)+'</div>' : '')
         + (r.comment ? '<div style="margin-top:2px;color:var(--text-muted);">Comment: '+esc(r.comment)+'</div>' : '')
         + '</div>';
     });
@@ -910,7 +965,7 @@
       agent: formState.meta.agent,
       ticketId: formState.meta.ticketId.trim(),
       ratings: formState.ratings.map(function(r,i){
-        return {param:PARAMS[i].group, question:PARAMS[i].question, weight:PARAMS[i].weight, rating:r.rating, reason:r.reason.trim(), comment:r.comment.trim()};
+        return {param:PARAMS[i].group, question:PARAMS[i].question, weight:PARAMS[i].weight, rating:r.rating, reason:r.reason.trim(), comment:r.comment.trim(), acpt:r.acpt||''};
       }),
       score: res.score,
       fatal: res.fatal,
@@ -1021,6 +1076,11 @@
         var reasonInput = appEl.querySelector('input[data-field="reason"][data-idx="'+ridx+'"]');
         if(reasonInput) reasonInput.value = rval;
       }
+      return;
+    }
+    if(field==='acpt'){
+      var aidx = parseInt(e.target.getAttribute('data-idx'),10);
+      formState.ratings[aidx].acpt = e.target.value;
       return;
     }
     if(field==='filter-from'){ filters.from = e.target.value; render(); return; }

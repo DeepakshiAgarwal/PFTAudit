@@ -173,7 +173,7 @@ function buildSlackPayload(audit){
   });
   if (flagged.length) {
     var lines = flagged.map(function(r){
-      return '• *[' + r.rating + ']* ' + r.question + (r.reason ? (': ' + r.reason) : '');
+      return '• *[' + r.rating + ']* ' + r.question + (r.reason ? (': ' + r.reason) : '') + (r.acpt ? (' _(ACPT: ' + r.acpt + ')_') : '');
     }).join('\n');
     blocks.push({type: 'section', text: {type: 'mrkdwn', text: '*Areas flagged:*\n' + lines}});
   }

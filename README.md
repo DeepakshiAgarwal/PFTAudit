@@ -20,8 +20,3 @@ This is now a normal client-server web app — a static page (`index.html`) plus
 - Share the GitHub Pages URL with your team. Anyone who opens it can submit audits and browse the Dashboard tab — no login required.
 - The top-left badge shows **Synced** (talking to the Sheet fine), **Offline** (couldn't reach it — data stays on that device until you click Refresh), or **Not set up** (the API_URL step above hasn't been done yet).
 - Every audit is stored as one row in the "Audits" sheet in your Google Sheet — you can open that sheet directly any time to see the raw data or build your own charts on top of it.
-- The **Bulk import** box on the Dashboard tab accepts a pasted JSON array of audits (matching the "Copy as JSON" format) and adds any that aren't already present — handy for one-off migrations.
-
-## Migrating the old data
-
-The previous Claude-artifact version had 4 audits in it. Once this is deployed, open that old artifact, go to Dashboard → Copy as JSON, and paste the result into the **Bulk import** box here to bring them across.
