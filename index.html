@@ -743,19 +743,6 @@
     return {start: fmtDate(start), end: fmtDate(today)};
   }
 
-  function currentWeekDaysSoFar(){
-    var start = startOfWeek(new Date());
-    var today = new Date(new Date().getFullYear(), new Date().getMonth(), new Date().getDate());
-    var labels = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
-    var days = [];
-    for(var i=0;i<7;i++){
-      var d = addDays(start, i);
-      if(d > today) break;
-      days.push({label: labels[i], date: fmtDate(d)});
-    }
-    return days;
-  }
-
   function scoreCellHTML(avg){
     if(avg===null) return '<td class="mono">—</td>';
     var cls = avg>=PASS_THRESHOLD ? 'cell-good' : (avg>=MID_THRESHOLD ? 'cell-mid' : 'cell-bad');
@@ -774,15 +761,18 @@
     var names = Object.keys(seen).sort();
     if(!names.length) return '';
 
+    var mtd = computeMTDRange();
     var weeks = computeWeekRanges(); // Wk0, Wk-1, Wk-2, Wk-3
 
     var out = '<div class="card" style="padding:20px;margin-bottom:20px;">';
-    out += '<h2 class="section-title">Auditor productivity (TL report)</h2><p class="section-sub">Audits completed per week per auditor, by audit date — target '+WEEKLY_TARGET+'/week. Uses all data, independent of the filters above.</p>';
-    out += '<div class="table-wrap"><table class="audits"><thead><tr><th>Auditor</th>';
+    out += '<h2 class="section-title">Auditor productivity (TL report)</h2><p class="section-sub">Audits completed by audit date — target '+WEEKLY_TARGET+'/week. Uses all data, independent of the filters above.</p>';
+    out += '<div class="table-wrap"><table class="audits"><thead><tr><th>Auditor</th><th>MTD</th>';
     weeks.forEach(function(w){ out += '<th>'+w.label+' ('+fmtShort(w.start)+'–'+fmtShort(w.end)+')</th>'; });
     out += '<th>Total</th></tr></thead><tbody>';
     names.forEach(function(name){
       out += '<tr><td><strong>'+esc(name)+'</strong></td>';
+      var mtdCount = allAudits.filter(function(a){ return a.auditor===name && a.auditDate>=mtd.start && a.auditDate<=mtd.end; }).length;
+      out += '<td class="mono">'+mtdCount+'</td>';
       var total = 0;
       weeks.forEach(function(w){
         var count = allAudits.filter(function(a){ return a.auditor===name && a.auditDate>=w.start && a.auditDate<=w.end; }).length;
@@ -804,20 +794,17 @@
     if(!names.length) return '';
 
     var mtd = computeMTDRange();
-    var weeks = computeWeekRanges().slice(1).reverse(); // Wk-3, Wk-2, Wk-1 (chronological)
-    var days = currentWeekDaysSoFar();
+    var weeks = computeWeekRanges(); // Wk0, Wk-1, Wk-2, Wk-3
 
     var out = '<div class="card" style="padding:20px;margin-bottom:20px;">';
-    out += '<h2 class="section-title">Agent quality score — trend</h2><p class="section-sub">Average score by period, by audit date — MTD, the last 3 completed weeks, then this week broken into days. Uses all data, independent of the filters above.</p>';
+    out += '<h2 class="section-title">Agent quality score — trend</h2><p class="section-sub">Average score by period, by audit date — MTD and the last 4 weeks. Uses all data, independent of the filters above.</p>';
     out += '<div class="table-wrap"><table class="audits"><thead><tr><th>Agent</th><th>MTD</th>';
     weeks.forEach(function(w){ out += '<th>'+w.label+'</th>'; });
-    days.forEach(function(d){ out += '<th>'+d.label+'</th>'; });
     out += '</tr></thead><tbody>';
     names.forEach(function(name){
       out += '<tr><td><strong>'+esc(name)+'</strong></td>';
       out += scoreCellHTML(avgScoreInRange(allAudits, name, mtd.start, mtd.end));
       weeks.forEach(function(w){ out += scoreCellHTML(avgScoreInRange(allAudits, name, w.start, w.end)); });
-      days.forEach(function(d){ out += scoreCellHTML(avgScoreInRange(allAudits, name, d.date, d.date)); });
       out += '</tr>';
     });
     out += '</tbody></table></div></div>';
