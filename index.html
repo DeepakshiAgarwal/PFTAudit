@@ -595,8 +595,6 @@
     }
     out += '</div>';
 
-    out += renderImportCard();
-
     if(!state.audits.length){
       out += '<div class="card empty-state"><h2 class="section-title">No audits yet</h2><p class="section-sub">Submit your first call audit to populate this dashboard.</p></div>';
       return out;
@@ -621,17 +619,6 @@
     out += renderCategoryMatrix(list);
     out += renderAuditsTable(list);
     return out;
-  }
-
-  function renderImportCard(){
-    return '<div class="card" style="padding:20px;margin-bottom:20px;">'
-      + '<h2 class="section-title">Bulk import</h2>'
-      + '<p class="section-sub">Paste a JSON array of audits (e.g. an old export) to add them to the server. Already-present IDs are skipped automatically.</p>'
-      + '<textarea id="import-textarea" placeholder="Paste JSON here..." style="min-height:90px;"></textarea>'
-      + '<div class="actions" style="margin-top:10px;">'
-        + '<button type="button" class="btn btn-primary" data-action="import-audits">Import</button>'
-      + '</div>'
-      + '</div>';
   }
 
   function filterField(label, html){
@@ -1008,31 +995,6 @@
       notifySlackRemote(nid).then(function(ok){
         toast(ok ? 'Sent to Slack.' : 'Could not send to Slack — check the webhook is set up.');
       });
-    }
-    else if(action==='import-audits'){
-      var ta = document.getElementById('import-textarea');
-      var raw = ta ? ta.value.trim() : '';
-      if(!raw){ toast('Paste some JSON first.'); return; }
-      var parsed;
-      try{ parsed = JSON.parse(raw); }catch(e){ toast('That doesn\'t look like valid JSON.'); return; }
-      var incoming = Array.isArray(parsed) ? parsed : [parsed];
-      var existingIds = {};
-      state.audits.forEach(function(a){ existingIds[a.id] = true; });
-      var toImport = incoming.filter(function(a){
-        return a && a.id && a.agent && Array.isArray(a.ratings) && !existingIds[a.id];
-      });
-      if(!toImport.length){ toast('Nothing new to import.'); return; }
-      toast('Importing ' + toImport.length + ' audit(s)…');
-      (async function(){
-        var okCount = 0;
-        for(var i=0;i<toImport.length;i++){
-          var payload = Object.assign({}, toImport[i], {silent:true});
-          var result = await saveAuditRemote(payload);
-          if(result && result.ok) okCount++;
-        }
-        await loadAudits();
-        toast('Imported ' + okCount + ' of ' + toImport.length + ' audit(s).');
-      })();
     }
   });
 
