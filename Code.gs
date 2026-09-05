@@ -15,7 +15,7 @@
  */
 
 var HEADERS = ['id','date','auditDate','auditor','agent','ticketId','score','fatal',
-  'summary','improvement','fatalFeedback','submittedAt','ratings'];
+  'summary','improvement','fatalFeedback','submittedAt','ratings','acpt'];
 
 var PASS_THRESHOLD = 85;
 var MID_THRESHOLD = 70;
@@ -26,6 +26,14 @@ function getSheet(){
   if (!sheet) {
     sheet = ss.insertSheet('Audits');
     sheet.appendRow(HEADERS);
+  } else {
+    // Migrate older sheets to any newly added trailing columns (e.g. 'acpt')
+    // without touching existing columns/data.
+    var existingCount = Math.max(sheet.getLastColumn(), 1);
+    if (existingCount < HEADERS.length) {
+      sheet.getRange(1, existingCount + 1, 1, HEADERS.length - existingCount)
+        .setValues([HEADERS.slice(existingCount)]);
+    }
   }
   // Force every data column to Plain Text so Sheets never auto-converts
   // date-like strings (e.g. "2026-08-31") into real Date cells, which
@@ -173,7 +181,7 @@ function buildSlackPayload(audit){
   });
   if (flagged.length) {
     var lines = flagged.map(function(r){
-      return '• *[' + r.rating + ']* ' + r.question + (r.reason ? (': ' + r.reason) : '') + (r.acpt ? (' _(ACPT: ' + r.acpt + ')_') : '');
+      return '• *[' + r.rating + ']* ' + r.question + (r.reason ? (': ' + r.reason) : '');
     }).join('\n');
     blocks.push({type: 'section', text: {type: 'mrkdwn', text: '*Areas flagged:*\n' + lines}});
   }
@@ -182,6 +190,9 @@ function buildSlackPayload(audit){
   }
   if (audit.fatal && audit.fatalFeedback) {
     blocks.push({type: 'section', text: {type: 'mrkdwn', text: ':rotating_light: *Fatal feedback:*\n' + audit.fatalFeedback}});
+  }
+  if (audit.acpt) {
+    blocks.push({type: 'section', text: {type: 'mrkdwn', text: '*ACPT analysis:* ' + audit.acpt}});
   }
 
   return {
