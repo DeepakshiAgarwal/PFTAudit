@@ -990,24 +990,37 @@
   // groups — real notes from that week's audits, not a generated sentence.
   // Capped to the most recent DRAFT_MAX_POINTS unique notes so it stays
   // short enough to fit in one screenshot.
-  function draftFeedbackNarrative(list, groups){
-    var seen = {};
-    var notes = [];
+  // A single audit can flag questions in both Aoi-side and Process-Gap-side
+  // groups at once (common for a fatal call that fails nearly everything),
+  // but it only has one improvement/fatalFeedback note. Assigning that note
+  // to both lists produced identical points in Aoi and Process Gaps, so
+  // each audit is now assigned to exactly one bucket — whichever side it
+  // has more flagged parameters in (ties go to Process Gaps).
+  function draftReportNotes(list){
+    var seen = {aoi:{}, gaps:{}};
+    var notes = {aoi:[], gaps:[]};
     list.forEach(function(a){
-      var hasGroupDefect = a.ratings.some(function(r, i){
+      var aoiDefects = 0, gapDefects = 0;
+      a.ratings.forEach(function(r, i){
         var p = PARAMS[i];
-        return p && groups.indexOf(p.group)!==-1 && (r.rating==='No' || r.rating==='Fatal');
+        if(!p || (r.rating!=='No' && r.rating!=='Fatal')) return;
+        if(AOI_GROUPS.indexOf(p.group)!==-1) aoiDefects++;
+        else if(PROCESS_GAP_GROUPS.indexOf(p.group)!==-1) gapDefects++;
       });
-      if(!hasGroupDefect) return;
+      if(aoiDefects===0 && gapDefects===0) return;
       var text = (a.fatal && a.fatalFeedback) ? a.fatalFeedback.trim() : (a.improvement || '').trim();
       if(!text) return;
+      var bucket = aoiDefects > gapDefects ? 'aoi' : 'gaps';
       var key = text.toLowerCase();
-      if(seen[key]) return;
-      seen[key] = true;
-      notes.push({date: a.auditDate, text: text});
+      if(seen[bucket][key]) return;
+      seen[bucket][key] = true;
+      notes[bucket].push({date: a.auditDate, text: text});
     });
-    notes.sort(function(a,b){ return a.date < b.date ? 1 : (a.date > b.date ? -1 : 0); });
-    return notes.slice(0, DRAFT_MAX_POINTS).map(function(n, idx){ return (idx+1)+'. '+n.text; }).join('\n');
+    function finalize(list){
+      list.sort(function(a,b){ return a.date < b.date ? 1 : (a.date > b.date ? -1 : 0); });
+      return list.slice(0, DRAFT_MAX_POINTS).map(function(n, idx){ return (idx+1)+'. '+n.text; }).join('\n');
+    }
+    return {aoi: finalize(notes.aoi), processGaps: finalize(notes.gaps)};
   }
 
   function pad(s, n){ s = String(s); return s.length >= n ? s + '  ' : s + Array(n - s.length + 1).join(' '); }
@@ -1031,8 +1044,9 @@
     var list = weeklyReportList();
     var rangeKey = weeklyReport.from + '|' + weeklyReport.to;
     if(weeklyReport.autoFillKey !== rangeKey){
-      weeklyReport.aoi = draftFeedbackNarrative(list, AOI_GROUPS) || 'No feedback notes on flagged Standardization/Soft Skills audits in this range.';
-      weeklyReport.processGaps = draftFeedbackNarrative(list, PROCESS_GAP_GROUPS) || 'No feedback notes on flagged process/tooling audits in this range.';
+      var notes = draftReportNotes(list);
+      weeklyReport.aoi = notes.aoi || 'No feedback notes on flagged Standardization/Soft Skills audits in this range.';
+      weeklyReport.processGaps = notes.processGaps || 'No feedback notes on flagged process/tooling audits in this range.';
       weeklyReport.autoFillKey = rangeKey;
     }
     var s = weeklyReportStats(list);
@@ -1240,8 +1254,9 @@
     else if(action==='copy-json'){ copyToClipboard('JSON data', buildJSON(filteredAudits())); }
     else if(action==='report-draft'){
       var rList = weeklyReportList();
-      weeklyReport.aoi = draftFeedbackNarrative(rList, AOI_GROUPS) || 'No feedback notes on flagged Standardization/Soft Skills audits in this range.';
-      weeklyReport.processGaps = draftFeedbackNarrative(rList, PROCESS_GAP_GROUPS) || 'No feedback notes on flagged process/tooling audits in this range.';
+      var rNotes = draftReportNotes(rList);
+      weeklyReport.aoi = rNotes.aoi || 'No feedback notes on flagged Standardization/Soft Skills audits in this range.';
+      weeklyReport.processGaps = rNotes.processGaps || 'No feedback notes on flagged process/tooling audits in this range.';
       weeklyReport.autoFillKey = weeklyReport.from + '|' + weeklyReport.to;
       render();
     }
