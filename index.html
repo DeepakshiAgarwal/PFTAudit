@@ -104,7 +104,7 @@
 '.wr-preview table.audits thead th{background:var(--accent-soft);}',
 '.wr-note{margin-top:18px;}',
 '.wr-note-label{font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:var(--text-muted);margin-bottom:6px;}',
-'.wr-textarea{display:block;width:100%;border:none;background:transparent;padding:0;resize:vertical;font-family:inherit;font-size:13.5px;color:var(--text);line-height:1.55;min-height:110px;}',
+'.wr-textarea{display:block;width:100%;border:none;background:transparent;padding:0;resize:none;overflow:hidden;font-family:inherit;font-size:13.5px;color:var(--text);line-height:1.55;min-height:60px;}',
 '.wr-textarea:focus{outline:1px dashed var(--accent);outline-offset:6px;}',
 '.seg{display:flex;gap:6px;}',
 '.seg-btn{flex:1;border:1px solid var(--border);background:var(--surface);color:var(--text-muted);font-family:inherit;font-weight:600;font-size:12.5px;padding:8px 6px;border-radius:8px;cursor:pointer;}',
@@ -389,6 +389,13 @@
       + '</div>'
       + (toastMsg ? '<div class="toast">'+esc(toastMsg)+'</div>' : '');
     appEl.innerHTML = html;
+    Array.prototype.forEach.call(appEl.querySelectorAll('.wr-textarea'), autosizeTextarea);
+  }
+
+  function autosizeTextarea(el){
+    if(!el) return;
+    el.style.height = 'auto';
+    el.style.height = el.scrollHeight + 'px';
   }
 
   function renderSetupBanner(){
@@ -976,12 +983,16 @@
     return {agentCount: Object.keys(agents).length, audits: audits, fatals: fatals, cqScore: cqScore, faPct: faPct};
   }
 
+  var DRAFT_MAX_POINTS = 6;
+
   // Pulls the auditor's own written feedback (Areas of improvement / Fatal
   // feedback) from audits that had a flagged rating in the given category
   // groups — real notes from that week's audits, not a generated sentence.
+  // Capped to the most recent DRAFT_MAX_POINTS unique notes so it stays
+  // short enough to fit in one screenshot.
   function draftFeedbackNarrative(list, groups){
     var seen = {};
-    var bullets = [];
+    var notes = [];
     list.forEach(function(a){
       var hasGroupDefect = a.ratings.some(function(r, i){
         var p = PARAMS[i];
@@ -993,9 +1004,10 @@
       var key = text.toLowerCase();
       if(seen[key]) return;
       seen[key] = true;
-      bullets.push(text);
+      notes.push({date: a.auditDate, text: text});
     });
-    return bullets.map(function(t, idx){ return (idx+1)+'. '+t; }).join('\n');
+    notes.sort(function(a,b){ return a.date < b.date ? 1 : (a.date > b.date ? -1 : 0); });
+    return notes.slice(0, DRAFT_MAX_POINTS).map(function(n, idx){ return (idx+1)+'. '+n.text; }).join('\n');
   }
 
   function pad(s, n){ s = String(s); return s.length >= n ? s + '  ' : s + Array(n - s.length + 1).join(' '); }
@@ -1251,8 +1263,8 @@
     }else if(field==='ticketId' || field==='ticketCategory' || field==='summary' || field==='improvement' || field==='fatalFeedback'){
       formState.meta[field] = e.target.value;
     }else if(field==='report-process'){ weeklyReport.process = e.target.value; }
-    else if(field==='report-aoi'){ weeklyReport.aoi = e.target.value; }
-    else if(field==='report-gaps'){ weeklyReport.processGaps = e.target.value; }
+    else if(field==='report-aoi'){ weeklyReport.aoi = e.target.value; autosizeTextarea(e.target); }
+    else if(field==='report-gaps'){ weeklyReport.processGaps = e.target.value; autosizeTextarea(e.target); }
   });
 
   appEl.addEventListener('change', function(e){
