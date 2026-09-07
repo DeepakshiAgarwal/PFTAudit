@@ -181,6 +181,10 @@
     'sandeep.kumar@wiom.in','vivek.pandey@wiom.in'
   ];
 
+  // Fixed list (not free text) so the same auditor can't show up under two
+  // different spellings/casings in the reports.
+  var AUDITORS = ['Manas Sibal', 'Deepakshi Agarwal'];
+
   var PARAMS = [
     {group:'Standardization', question:'Adherence to Call opening', weight:5, noFatal:true, reasons:[
       'Call opening not given','Greeting not provided','Self-introduction missed','Company name not mentioned','Opening script not followed'
@@ -415,7 +419,7 @@
     out += '<h2 class="section-title">Call details</h2><p class="section-sub">Every field below feeds the weighted score shown as you rate the call.</p>';
 
     out += '<div class="meta-grid">';
-    out += field('Auditor <span class="req-star">*</span>', '<input type="text" data-field="auditor" value="'+esc(formState.meta.auditor)+'" placeholder="Your name">');
+    out += field('Auditor <span class="req-star">*</span>', auditorSelect());
     out += field('Agent <span class="req-star">*</span>', agentSelect());
     out += field('Call date <span class="req-star">*</span>', '<input type="date" data-field="date" value="'+esc(formState.meta.date)+'">');
     out += field('Audit date <span class="req-star">*</span>', '<input type="date" data-field="auditDate" value="'+esc(formState.meta.auditDate)+'">');
@@ -471,6 +475,16 @@
     out += '<option value=""'+(formState.meta.agent===''?' selected':'')+'>Select agent…</option>';
     AGENTS.forEach(function(a){
       out += '<option value="'+esc(a)+'"'+(formState.meta.agent===a?' selected':'')+'>'+esc(a)+'</option>';
+    });
+    out += '</select>';
+    return out;
+  }
+
+  function auditorSelect(){
+    var out = '<select data-field="auditor">';
+    out += '<option value=""'+(formState.meta.auditor===''?' selected':'')+'>Select auditor…</option>';
+    AUDITORS.forEach(function(a){
+      out += '<option value="'+esc(a)+'"'+(formState.meta.auditor===a?' selected':'')+'>'+esc(a)+'</option>';
     });
     out += '</select>';
     return out;
@@ -1090,7 +1104,7 @@
     if(field==='reason' || field==='comment'){
       var idx = parseInt(e.target.getAttribute('data-idx'),10);
       formState.ratings[idx][field] = e.target.value;
-    }else if(field==='auditor' || field==='ticketId' || field==='summary' || field==='improvement' || field==='fatalFeedback'){
+    }else if(field==='ticketId' || field==='summary' || field==='improvement' || field==='fatalFeedback'){
       formState.meta[field] = e.target.value;
     }
   });
@@ -1098,7 +1112,7 @@
   appEl.addEventListener('change', function(e){
     var field = e.target.getAttribute('data-field');
     if(!field) return;
-    if(field==='agent' || field==='date' || field==='auditDate' || field==='acpt'){ formState.meta[field] = e.target.value; return; }
+    if(field==='auditor' || field==='agent' || field==='date' || field==='auditDate' || field==='acpt'){ formState.meta[field] = e.target.value; return; }
     if(field==='reason-select'){
       var ridx = parseInt(e.target.getAttribute('data-idx'),10);
       var rval = e.target.value;
