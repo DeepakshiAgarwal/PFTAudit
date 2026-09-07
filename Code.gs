@@ -15,7 +15,7 @@
  */
 
 var HEADERS = ['id','date','auditDate','auditor','agent','ticketId','score','fatal',
-  'summary','improvement','fatalFeedback','submittedAt','ratings','acpt'];
+  'summary','improvement','fatalFeedback','submittedAt','ratings','acpt','ticketCategory'];
 
 var PASS_THRESHOLD = 85;
 var MID_THRESHOLD = 70;

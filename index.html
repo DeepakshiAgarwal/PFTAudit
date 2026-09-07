@@ -239,6 +239,13 @@
   var activeTab = 'submit';
   var expanded = {};
   var filters = {from:'', to:'', auditor:'All', agent:'All', status:'all'};
+  var weeklyReport = {
+    process: 'Service Tickets',
+    from: fmtDate(startOfWeek(new Date())),
+    to: todayStr(),
+    aoi: '',
+    processGaps: ''
+  };
   var toastMsg = '';
   var toastTimer = null;
   var formState = freshFormState();
@@ -370,7 +377,7 @@
   function render(){
     var html = renderHeader() + '<div class="wrap">'
       + renderSetupBanner()
-      + (activeTab==='submit' ? renderSubmitTab() : renderDashboardTab())
+      + (activeTab==='submit' ? renderSubmitTab() : (activeTab==='report' ? renderWeeklyReportTab() : renderDashboardTab()))
       + '</div>'
       + (toastMsg ? '<div class="toast">'+esc(toastMsg)+'</div>' : '');
     appEl.innerHTML = html;
@@ -402,6 +409,7 @@
       + '<div class="tabs">'
       + '<button type="button" class="tab-btn'+(activeTab==='submit'?' active':'')+'" data-action="tab" data-tab="submit">Submit Audit</button>'
       + '<button type="button" class="tab-btn'+(activeTab==='dashboard'?' active':'')+'" data-action="tab" data-tab="dashboard">Dashboard</button>'
+      + '<button type="button" class="tab-btn'+(activeTab==='report'?' active':'')+'" data-action="tab" data-tab="report">Weekly Report</button>'
       + '</div></div></div></div>';
   }
 
@@ -887,10 +895,10 @@
 
   var DEFECT_REPORT_THRESHOLD = 80;
 
-  function renderDefectParetoReport(list){
-    if(!list.length) return '';
-    var stats = PARAMS.map(function(p, i){
+  function computeParamStats(list){
+    return PARAMS.map(function(p, i){
       var yes=0, no=0, fatal=0, na=0, rated=0;
+      var reasonCounts = {};
       list.forEach(function(a){
         var r = a.ratings[i];
         if(!r || !r.rating) return;
@@ -899,11 +907,23 @@
         else if(r.rating==='No') no++;
         else if(r.rating==='Fatal') fatal++;
         else if(r.rating==='NA') na++;
+        if((r.rating==='No'||r.rating==='Fatal') && r.reason){
+          reasonCounts[r.reason] = (reasonCounts[r.reason]||0) + 1;
+        }
       });
       var defectCount = no + fatal;
       var passRate = rated ? Math.round((yes+na)/rated*100) : 100;
-      return {question:p.question, group:p.group, defectCount:defectCount, passRate:passRate, rated:rated};
-    }).filter(function(s){ return s.rated>0 && s.passRate < DEFECT_REPORT_THRESHOLD; });
+      var topReason = null, topReasonCount = 0;
+      Object.keys(reasonCounts).forEach(function(rs){
+        if(reasonCounts[rs] > topReasonCount){ topReason = rs; topReasonCount = reasonCounts[rs]; }
+      });
+      return {question:p.question, group:p.group, defectCount:defectCount, passRate:passRate, rated:rated, topReason:topReason};
+    });
+  }
+
+  function renderDefectParetoReport(list){
+    if(!list.length) return '';
+    var stats = computeParamStats(list).filter(function(s){ return s.rated>0 && s.passRate < DEFECT_REPORT_THRESHOLD; });
 
     var out = '<div class="card" style="padding:20px;margin-bottom:20px;">';
     out += '<h2 class="section-title">Pareto — Top quality defect parameters (&lt;'+DEFECT_REPORT_THRESHOLD+'%)</h2><p class="section-sub">Parameters with a pass rate below '+DEFECT_REPORT_THRESHOLD+'%, ranked by defect count — audits matching the current filters above.</p>';
@@ -924,6 +944,98 @@
         + '<td><div class="pareto-bar-wrap"><div class="pareto-bar" style="width:'+barPct+'%;"></div></div></td></tr>';
     });
     out += '</tbody></table></div></div>';
+    return out;
+  }
+
+  // ---------- weekly management report ----------
+
+  var AOI_GROUPS = ['Standardization', 'Soft Skills'];
+  var PROCESS_GAP_GROUPS = ['Resolution & Process Adherence', 'Tool Management / Documentation', 'CSAT Triggered', 'Compliance'];
+
+  function weeklyReportList(){
+    return state.audits.filter(function(a){
+      return a.auditDate >= weeklyReport.from && a.auditDate <= weeklyReport.to;
+    });
+  }
+
+  function weeklyReportStats(list){
+    var agents = {};
+    list.forEach(function(a){ agents[a.agent] = true; });
+    var audits = list.length;
+    var fatals = list.filter(function(a){ return a.fatal; }).length;
+    var cqScore = audits ? Math.round(list.reduce(function(s,a){ return s+a.score; }, 0)/audits) : 0;
+    var faPct = audits ? Math.round((audits-fatals)/audits*100) : 0;
+    return {agentCount: Object.keys(agents).length, audits: audits, fatals: fatals, cqScore: cqScore, faPct: faPct};
+  }
+
+  function draftNarrative(list, groups){
+    var stats = computeParamStats(list)
+      .filter(function(s){ return groups.indexOf(s.group)!==-1 && s.defectCount>0; })
+      .sort(function(a,b){ return b.defectCount-a.defectCount; })
+      .slice(0,4);
+    if(!stats.length) return '';
+    return stats.map(function(s, idx){
+      var reasonPart = s.topReason ? (', as ' + s.topReason.charAt(0).toLowerCase()+s.topReason.slice(1)) : '';
+      return (idx+1)+'. '+s.question+' needs improvement'+reasonPart+' ('+s.defectCount+' instance'+(s.defectCount===1?'':'s')+').';
+    }).join('\n');
+  }
+
+  function pad(s, n){ s = String(s); return s.length >= n ? s + '  ' : s + Array(n - s.length + 1).join(' '); }
+
+  function buildWeeklyReportText(){
+    var list = weeklyReportList();
+    var s = weeklyReportStats(list);
+    var lines = [];
+    lines.push('WTD ' + weeklyReport.process + ' (' + fmtShort(weeklyReport.from) + '-' + fmtShort(weeklyReport.to) + ')');
+    lines.push('');
+    lines.push('```');
+    lines.push('Process        #Agents  #Audits  #Fatals  #CQ Score  #FA');
+    lines.push(pad(weeklyReport.process, 15) + pad(String(s.agentCount), 9) + pad(String(s.audits), 9) + pad(String(s.fatals), 9) + pad(s.cqScore+'%', 11) + s.faPct+'%');
+    lines.push('```');
+    if(weeklyReport.aoi){ lines.push(''); lines.push('*Aoi:*'); lines.push(weeklyReport.aoi); }
+    if(weeklyReport.processGaps){ lines.push(''); lines.push('*Process Gaps:*'); lines.push(weeklyReport.processGaps); }
+    return lines.join('\n');
+  }
+
+  function renderWeeklyReportTab(){
+    var list = weeklyReportList();
+    var s = weeklyReportStats(list);
+
+    var out = '<div class="card" style="padding:20px;margin-bottom:20px;">';
+    out += '<h2 class="section-title">Weekly report</h2><p class="section-sub">A management-ready summary for a date range (by audit date) — edit the process name and notes, then copy for Slack. Independent of the Dashboard filters.</p>';
+
+    out += '<div class="meta-grid" style="grid-template-columns:1fr 1fr 1fr;">';
+    out += field('Process', '<input type="text" data-field="report-process" value="'+esc(weeklyReport.process)+'">');
+    out += field('From', '<input type="date" data-field="report-from" value="'+esc(weeklyReport.from)+'">');
+    out += field('To', '<input type="date" data-field="report-to" value="'+esc(weeklyReport.to)+'">');
+    out += '</div>';
+
+    out += '<div class="table-wrap" style="margin-bottom:16px;"><table class="audits"><thead><tr>'
+      + '<th>Process</th><th>#Agent Count</th><th>#Audits</th><th>#Fatals</th><th>#CQ Score</th><th>#FA</th>'
+      + '</tr></thead><tbody><tr>'
+      + '<td><strong>'+esc(weeklyReport.process)+'</strong></td>'
+      + '<td class="mono">'+s.agentCount+'</td>'
+      + '<td class="mono">'+s.audits+'</td>'
+      + '<td class="mono">'+s.fatals+'</td>'
+      + '<td class="mono">'+s.cqScore+'%</td>'
+      + '<td class="mono">'+s.faPct+'%</td>'
+      + '</tr></tbody></table></div>';
+    out += '<p class="section-sub">#CQ Score = average score across these audits (a fatal audit counts as 0). #FA = % of audits with no fatal breach. If that is not what your team means by "FA", tell me and I will change the formula.</p>';
+
+    out += '<div class="actions" style="margin-bottom:6px;">'
+      + '<button type="button" class="pill-btn" data-action="report-draft">Generate draft Aoi / Process Gaps</button>'
+      + '</div>';
+    out += '<p class="section-sub">Drafts are built from the most-flagged parameters in this range (Standardization/Soft Skills → Aoi, everything else → Process Gaps) — edit freely before sharing.</p>';
+
+    out += '<div class="meta-grid" style="grid-template-columns:1fr 1fr;gap:14px;">';
+    out += field('Aoi (Areas of Improvement)', '<textarea data-field="report-aoi" rows="7" placeholder="Click Generate draft, or write your own.">'+esc(weeklyReport.aoi)+'</textarea>');
+    out += field('Process Gaps', '<textarea data-field="report-gaps" rows="7" placeholder="Click Generate draft, or write your own.">'+esc(weeklyReport.processGaps)+'</textarea>');
+    out += '</div>';
+
+    out += '<div class="actions">'
+      + '<button type="button" class="btn btn-primary" data-action="report-copy">Copy for Slack</button>'
+      + '</div>';
+    out += '</div>';
     return out;
   }
 
@@ -1093,6 +1205,13 @@
     }
     else if(action==='copy-csv'){ copyToClipboard('CSV data', buildCSV(filteredAudits())); }
     else if(action==='copy-json'){ copyToClipboard('JSON data', buildJSON(filteredAudits())); }
+    else if(action==='report-draft'){
+      var rList = weeklyReportList();
+      weeklyReport.aoi = draftNarrative(rList, AOI_GROUPS) || 'No flagged Standardization/Soft Skills parameters in this range.';
+      weeklyReport.processGaps = draftNarrative(rList, PROCESS_GAP_GROUPS) || 'No flagged process/tooling parameters in this range.';
+      render();
+    }
+    else if(action==='report-copy'){ copyToClipboard('Weekly report', buildWeeklyReportText()); }
     else if(action==='notify-slack'){
       var nid = actionEl.getAttribute('data-id');
       notifySlackRemote(nid).then(function(ok){
@@ -1109,7 +1228,9 @@
       formState.ratings[idx][field] = e.target.value;
     }else if(field==='ticketId' || field==='ticketCategory' || field==='summary' || field==='improvement' || field==='fatalFeedback'){
       formState.meta[field] = e.target.value;
-    }
+    }else if(field==='report-process'){ weeklyReport.process = e.target.value; }
+    else if(field==='report-aoi'){ weeklyReport.aoi = e.target.value; }
+    else if(field==='report-gaps'){ weeklyReport.processGaps = e.target.value; }
   });
 
   appEl.addEventListener('change', function(e){
@@ -1130,6 +1251,8 @@
     if(field==='filter-to'){ filters.to = e.target.value; render(); return; }
     if(field==='filter-auditor'){ filters.auditor = e.target.value; render(); return; }
     if(field==='filter-agent'){ filters.agent = e.target.value; render(); return; }
+    if(field==='report-from'){ weeklyReport.from = e.target.value; render(); return; }
+    if(field==='report-to'){ weeklyReport.to = e.target.value; render(); return; }
   });
 
   render();
