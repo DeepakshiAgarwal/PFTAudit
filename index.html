@@ -244,7 +244,8 @@
     from: fmtDate(startOfWeek(new Date())),
     to: todayStr(),
     aoi: '',
-    processGaps: ''
+    processGaps: '',
+    autoFillKey: ''
   };
   var toastMsg = '';
   var toastTimer = null;
@@ -968,16 +969,26 @@
     return {agentCount: Object.keys(agents).length, audits: audits, fatals: fatals, cqScore: cqScore, faPct: faPct};
   }
 
-  function draftNarrative(list, groups){
-    var stats = computeParamStats(list)
-      .filter(function(s){ return groups.indexOf(s.group)!==-1 && s.defectCount>0; })
-      .sort(function(a,b){ return b.defectCount-a.defectCount; })
-      .slice(0,4);
-    if(!stats.length) return '';
-    return stats.map(function(s, idx){
-      var reasonPart = s.topReason ? (', as ' + s.topReason.charAt(0).toLowerCase()+s.topReason.slice(1)) : '';
-      return (idx+1)+'. '+s.question+' needs improvement'+reasonPart+' ('+s.defectCount+' instance'+(s.defectCount===1?'':'s')+').';
-    }).join('\n');
+  // Pulls the auditor's own written feedback (Areas of improvement / Fatal
+  // feedback) from audits that had a flagged rating in the given category
+  // groups — real notes from that week's audits, not a generated sentence.
+  function draftFeedbackNarrative(list, groups){
+    var seen = {};
+    var bullets = [];
+    list.forEach(function(a){
+      var hasGroupDefect = a.ratings.some(function(r, i){
+        var p = PARAMS[i];
+        return p && groups.indexOf(p.group)!==-1 && (r.rating==='No' || r.rating==='Fatal');
+      });
+      if(!hasGroupDefect) return;
+      var text = (a.fatal && a.fatalFeedback) ? a.fatalFeedback.trim() : (a.improvement || '').trim();
+      if(!text) return;
+      var key = text.toLowerCase();
+      if(seen[key]) return;
+      seen[key] = true;
+      bullets.push(text);
+    });
+    return bullets.map(function(t, idx){ return (idx+1)+'. '+t; }).join('\n');
   }
 
   function pad(s, n){ s = String(s); return s.length >= n ? s + '  ' : s + Array(n - s.length + 1).join(' '); }
@@ -999,6 +1010,12 @@
 
   function renderWeeklyReportTab(){
     var list = weeklyReportList();
+    var rangeKey = weeklyReport.from + '|' + weeklyReport.to;
+    if(weeklyReport.autoFillKey !== rangeKey){
+      weeklyReport.aoi = draftFeedbackNarrative(list, AOI_GROUPS) || 'No feedback notes on flagged Standardization/Soft Skills audits in this range.';
+      weeklyReport.processGaps = draftFeedbackNarrative(list, PROCESS_GAP_GROUPS) || 'No feedback notes on flagged process/tooling audits in this range.';
+      weeklyReport.autoFillKey = rangeKey;
+    }
     var s = weeklyReportStats(list);
 
     var out = '<div class="card" style="padding:20px;margin-bottom:20px;">';
@@ -1022,14 +1039,14 @@
       + '</tr></tbody></table></div>';
     out += '<p class="section-sub">#CQ Score = average score across these audits (a fatal audit counts as 0). #FA = % of audits with no fatal breach. If that is not what your team means by "FA", tell me and I will change the formula.</p>';
 
+    out += '<p class="section-sub">Aoi and Process Gaps below are pre-filled from the auditor\'s own feedback notes on flagged audits in this range (Standardization/Soft Skills → Aoi, everything else → Process Gaps) — edit freely before sharing. Changing the date range refreshes them; use Refill to redo it for the same range (e.g. after new audits land today).</p>';
     out += '<div class="actions" style="margin-bottom:6px;">'
-      + '<button type="button" class="pill-btn" data-action="report-draft">Generate draft Aoi / Process Gaps</button>'
+      + '<button type="button" class="pill-btn" data-action="report-draft">Refill from feedback</button>'
       + '</div>';
-    out += '<p class="section-sub">Drafts are built from the most-flagged parameters in this range (Standardization/Soft Skills → Aoi, everything else → Process Gaps) — edit freely before sharing.</p>';
 
     out += '<div class="meta-grid" style="grid-template-columns:1fr 1fr;gap:14px;">';
-    out += field('Aoi (Areas of Improvement)', '<textarea data-field="report-aoi" rows="7" placeholder="Click Generate draft, or write your own.">'+esc(weeklyReport.aoi)+'</textarea>');
-    out += field('Process Gaps', '<textarea data-field="report-gaps" rows="7" placeholder="Click Generate draft, or write your own.">'+esc(weeklyReport.processGaps)+'</textarea>');
+    out += field('Aoi (Areas of Improvement)', '<textarea data-field="report-aoi" rows="7" placeholder="No feedback yet — write your own or click Refill.">'+esc(weeklyReport.aoi)+'</textarea>');
+    out += field('Process Gaps', '<textarea data-field="report-gaps" rows="7" placeholder="No feedback yet — write your own or click Refill.">'+esc(weeklyReport.processGaps)+'</textarea>');
     out += '</div>';
 
     out += '<div class="actions">'
@@ -1207,8 +1224,9 @@
     else if(action==='copy-json'){ copyToClipboard('JSON data', buildJSON(filteredAudits())); }
     else if(action==='report-draft'){
       var rList = weeklyReportList();
-      weeklyReport.aoi = draftNarrative(rList, AOI_GROUPS) || 'No flagged Standardization/Soft Skills parameters in this range.';
-      weeklyReport.processGaps = draftNarrative(rList, PROCESS_GAP_GROUPS) || 'No flagged process/tooling parameters in this range.';
+      weeklyReport.aoi = draftFeedbackNarrative(rList, AOI_GROUPS) || 'No feedback notes on flagged Standardization/Soft Skills audits in this range.';
+      weeklyReport.processGaps = draftFeedbackNarrative(rList, PROCESS_GAP_GROUPS) || 'No feedback notes on flagged process/tooling audits in this range.';
+      weeklyReport.autoFillKey = weeklyReport.from + '|' + weeklyReport.to;
       render();
     }
     else if(action==='report-copy'){ copyToClipboard('Weekly report', buildWeeklyReportText()); }
