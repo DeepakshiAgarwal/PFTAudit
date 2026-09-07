@@ -99,6 +99,13 @@
 '.pareto-bar-wrap{background:var(--surface-2);border-radius:6px;height:16px;overflow:hidden;}',
 '.pareto-bar{background:var(--accent);height:100%;border-radius:6px;}',
 '.acpt-stat{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:16px 18px;}',
+'.wr-preview{border:1px solid var(--border);border-radius:12px;padding:20px 22px;background:var(--surface);}',
+'.wr-preview h3{margin:0 0 14px;font-size:15.5px;font-weight:700;}',
+'.wr-preview table.audits thead th{background:var(--accent-soft);}',
+'.wr-note{margin-top:18px;}',
+'.wr-note-label{font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:var(--text-muted);margin-bottom:6px;}',
+'.wr-textarea{display:block;width:100%;border:none;background:transparent;padding:0;resize:vertical;font-family:inherit;font-size:13.5px;color:var(--text);line-height:1.55;min-height:110px;}',
+'.wr-textarea:focus{outline:1px dashed var(--accent);outline-offset:6px;}',
 '.seg{display:flex;gap:6px;}',
 '.seg-btn{flex:1;border:1px solid var(--border);background:var(--surface);color:var(--text-muted);font-family:inherit;font-weight:600;font-size:12.5px;padding:8px 6px;border-radius:8px;cursor:pointer;}',
 '.seg-btn.seg-active.seg-yes{background:var(--success-soft);border-color:var(--success);color:var(--success);}',
@@ -240,7 +247,7 @@
   var expanded = {};
   var filters = {from:'', to:'', auditor:'All', agent:'All', status:'all'};
   var weeklyReport = {
-    process: 'Service Tickets',
+    process: 'PFT',
     from: fmtDate(startOfWeek(new Date())),
     to: todayStr(),
     aoi: '',
@@ -1019,7 +1026,7 @@
     var s = weeklyReportStats(list);
 
     var out = '<div class="card" style="padding:20px;margin-bottom:20px;">';
-    out += '<h2 class="section-title">Weekly report</h2><p class="section-sub">A management-ready summary for a date range (by audit date) — edit the process name and notes, then copy for Slack. Independent of the Dashboard filters.</p>';
+    out += '<h2 class="section-title">Weekly report</h2>';
 
     out += '<div class="meta-grid" style="grid-template-columns:1fr 1fr 1fr;">';
     out += field('Process', '<input type="text" data-field="report-process" value="'+esc(weeklyReport.process)+'">');
@@ -1027,7 +1034,14 @@
     out += field('To', '<input type="date" data-field="report-to" value="'+esc(weeklyReport.to)+'">');
     out += '</div>';
 
-    out += '<div class="table-wrap" style="margin-bottom:16px;"><table class="audits"><thead><tr>'
+    out += '<div class="actions" style="margin-bottom:16px;">'
+      + '<button type="button" class="pill-btn" data-action="report-draft">Refill from feedback</button>'
+      + '<button type="button" class="btn btn-primary" data-action="report-copy">Copy for Slack</button>'
+      + '</div>';
+
+    out += '<div class="wr-preview" id="wr-preview">';
+    out += '<h3>WTD '+esc(weeklyReport.process)+' ('+fmtShort(weeklyReport.from)+'-'+fmtShort(weeklyReport.to)+')</h3>';
+    out += '<div class="table-wrap"><table class="audits"><thead><tr>'
       + '<th>Process</th><th>#Agent Count</th><th>#Audits</th><th>#Fatals</th><th>#CQ Score</th><th>#FA</th>'
       + '</tr></thead><tbody><tr>'
       + '<td><strong>'+esc(weeklyReport.process)+'</strong></td>'
@@ -1037,21 +1051,11 @@
       + '<td class="mono">'+s.cqScore+'%</td>'
       + '<td class="mono">'+s.faPct+'%</td>'
       + '</tr></tbody></table></div>';
-    out += '<p class="section-sub">#CQ Score = average score across these audits (a fatal audit counts as 0). #FA = % of audits with no fatal breach. If that is not what your team means by "FA", tell me and I will change the formula.</p>';
 
-    out += '<p class="section-sub">Aoi and Process Gaps below are pre-filled from the auditor\'s own feedback notes on flagged audits in this range (Standardization/Soft Skills → Aoi, everything else → Process Gaps) — edit freely before sharing. Changing the date range refreshes them; use Refill to redo it for the same range (e.g. after new audits land today).</p>';
-    out += '<div class="actions" style="margin-bottom:6px;">'
-      + '<button type="button" class="pill-btn" data-action="report-draft">Refill from feedback</button>'
-      + '</div>';
-
-    out += '<div class="meta-grid" style="grid-template-columns:1fr 1fr;gap:14px;">';
-    out += field('Aoi (Areas of Improvement)', '<textarea data-field="report-aoi" rows="7" placeholder="No feedback yet — write your own or click Refill.">'+esc(weeklyReport.aoi)+'</textarea>');
-    out += field('Process Gaps', '<textarea data-field="report-gaps" rows="7" placeholder="No feedback yet — write your own or click Refill.">'+esc(weeklyReport.processGaps)+'</textarea>');
+    out += '<div class="wr-note"><div class="wr-note-label">Aoi</div><textarea class="wr-textarea" data-field="report-aoi" placeholder="No feedback yet — write your own or click Refill.">'+esc(weeklyReport.aoi)+'</textarea></div>';
+    out += '<div class="wr-note"><div class="wr-note-label">Process Gaps</div><textarea class="wr-textarea" data-field="report-gaps" placeholder="No feedback yet — write your own or click Refill.">'+esc(weeklyReport.processGaps)+'</textarea></div>';
     out += '</div>';
 
-    out += '<div class="actions">'
-      + '<button type="button" class="btn btn-primary" data-action="report-copy">Copy for Slack</button>'
-      + '</div>';
     out += '</div>';
     return out;
   }
