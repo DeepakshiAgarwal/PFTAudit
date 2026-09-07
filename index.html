@@ -985,21 +985,50 @@
 
   var DRAFT_MAX_POINTS = 6;
 
+  // Some auditors write one feedback field as several "Label --- detail"
+  // issues stacked on separate lines. Treat each line as its own note
+  // instead of jamming them into a single numbered point.
+  function splitNoteLines(text){
+    return text.split('\n').map(function(l){ return l.trim(); }).filter(function(l){ return l.length>0; });
+  }
+
+  // Words longer than 3 letters, lowercased, punctuation stripped — good
+  // enough to compare two notes for "same issue, reworded" without a real
+  // NLP dependency. Short words (dates like "3rd", "sep", connectors) drop
+  // out on their own since they're rarely the substance of the note.
+  function significantWords(text){
+    return text.toLowerCase().replace(/[^a-z\s]/g, ' ').split(/\s+/).filter(function(w){ return w.length>3; });
+  }
+
+  function jaccardSimilarity(wordsA, wordsB){
+    var setA = {}, setB = {};
+    wordsA.forEach(function(w){ setA[w]=true; });
+    wordsB.forEach(function(w){ setB[w]=true; });
+    var keysA = Object.keys(setA), keysB = Object.keys(setB);
+    if(!keysA.length || !keysB.length) return 0;
+    var inter = 0;
+    keysA.forEach(function(w){ if(setB[w]) inter++; });
+    return inter / (keysA.length + keysB.length - inter);
+  }
+
+  var NOTE_SIMILARITY_THRESHOLD = 0.5;
+
   // Pulls the auditor's own written feedback (Areas of improvement / Fatal
   // feedback) from audits that had a flagged rating in the given category
   // groups — real notes from that week's audits, not a generated sentence.
-  // Capped to the most recent DRAFT_MAX_POINTS unique notes so it stays
-  // short enough to fit in one screenshot.
-  // A single audit can flag questions in both Aoi-side and Process-Gap-side
-  // groups at once (common for a fatal call that fails nearly everything),
-  // but it only has one improvement/fatalFeedback note. Assigning that note
-  // to both lists produced identical points in Aoi and Process Gaps, so
-  // each audit is now assigned to exactly one bucket — whichever side it
-  // has more flagged parameters in (ties go to Process Gaps).
+  // A single audit can flag questions on both the Aoi side and the
+  // Process-Gap side at once (common for a fatal call that fails nearly
+  // everything), but it only has one feedback note, so each audit is
+  // assigned to exactly one bucket — whichever side it has more flagged
+  // parameters in — instead of that note showing up in both lists.
+  // Notes are compared word-for-word (not exact string match) so the same
+  // recurring issue reworded slightly across different audits collapses
+  // into one point instead of several near-identical ones; the most
+  // recent audits are considered first so the latest wording wins.
   function draftReportNotes(list){
-    var seen = {aoi:{}, gaps:{}};
+    var byRecency = list.slice().sort(function(a,b){ return a.auditDate < b.auditDate ? 1 : (a.auditDate > b.auditDate ? -1 : 0); });
     var notes = {aoi:[], gaps:[]};
-    list.forEach(function(a){
+    byRecency.forEach(function(a){
       var aoiDefects = 0, gapDefects = 0;
       a.ratings.forEach(function(r, i){
         var p = PARAMS[i];
@@ -1008,17 +1037,21 @@
         else if(PROCESS_GAP_GROUPS.indexOf(p.group)!==-1) gapDefects++;
       });
       if(aoiDefects===0 && gapDefects===0) return;
-      var text = (a.fatal && a.fatalFeedback) ? a.fatalFeedback.trim() : (a.improvement || '').trim();
-      if(!text) return;
+      var rawText = (a.fatal && a.fatalFeedback) ? a.fatalFeedback : (a.improvement || '');
+      var lines = splitNoteLines(rawText);
+      if(!lines.length) return;
       var bucket = aoiDefects > gapDefects ? 'aoi' : 'gaps';
-      var key = text.toLowerCase();
-      if(seen[bucket][key]) return;
-      seen[bucket][key] = true;
-      notes[bucket].push({date: a.auditDate, text: text});
+      lines.forEach(function(line){
+        var words = significantWords(line);
+        var isDup = notes[bucket].some(function(existing){
+          return jaccardSimilarity(words, existing.words) >= NOTE_SIMILARITY_THRESHOLD;
+        });
+        if(isDup) return;
+        notes[bucket].push({date: a.auditDate, text: line, words: words});
+      });
     });
-    function finalize(list){
-      list.sort(function(a,b){ return a.date < b.date ? 1 : (a.date > b.date ? -1 : 0); });
-      return list.slice(0, DRAFT_MAX_POINTS).map(function(n, idx){ return (idx+1)+'. '+n.text; }).join('\n');
+    function finalize(bucketNotes){
+      return bucketNotes.slice(0, DRAFT_MAX_POINTS).map(function(n, idx){ return (idx+1)+'. '+n.text; }).join('\n');
     }
     return {aoi: finalize(notes.aoi), processGaps: finalize(notes.gaps)};
   }
