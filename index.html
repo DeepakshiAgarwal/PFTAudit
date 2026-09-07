@@ -247,7 +247,7 @@
 
   function freshFormState(){
     return {
-      meta:{auditor:'', agent:'', date:todayStr(), auditDate:todayStr(), ticketId:'', summary:'', improvement:'', fatalFeedback:'', acpt:''},
+      meta:{auditor:'', agent:'', date:todayStr(), auditDate:todayStr(), ticketId:'', ticketCategory:'', summary:'', improvement:'', fatalFeedback:'', acpt:''},
       ratings: PARAMS.map(function(){ return {rating:null, reason:'', comment:''}; }),
       error:''
     };
@@ -421,9 +421,10 @@
     out += '<div class="meta-grid">';
     out += field('Auditor <span class="req-star">*</span>', auditorSelect());
     out += field('Agent <span class="req-star">*</span>', agentSelect());
-    out += field('Call date <span class="req-star">*</span>', '<input type="date" data-field="date" value="'+esc(formState.meta.date)+'">');
+    out += field('PFT action date <span class="req-star">*</span>', '<input type="date" data-field="date" value="'+esc(formState.meta.date)+'">');
     out += field('Audit date <span class="req-star">*</span>', '<input type="date" data-field="auditDate" value="'+esc(formState.meta.auditDate)+'">');
     out += field('Ticket / Call ID', '<input type="text" data-field="ticketId" value="'+esc(formState.meta.ticketId)+'" placeholder="Optional">');
+    out += field('Ticket category', '<input type="text" data-field="ticketCategory" value="'+esc(formState.meta.ticketCategory)+'" placeholder="Optional">');
     out += '</div>';
 
     if(formState.error){
@@ -567,12 +568,12 @@
   }
 
   function buildCSV(list){
-    var headers = ['Call Date','Audit Date','Auditor','Agent','Ticket ID','Parameter','Question','Weightage','Rating','Reason','Comment','Total Score','Fatal','ACPT Analysis','Call Summary','Areas of Improvement','Fatal Feedback','Submitted At'];
+    var headers = ['PFT Action Date','Audit Date','Auditor','Agent','Ticket ID','Ticket Category','Parameter','Question','Weightage','Rating','Reason','Comment','Total Score','Fatal','ACPT Analysis','Call Summary','Areas of Improvement','Fatal Feedback','Submitted At'];
     var rows = [headers.join(',')];
     list.forEach(function(a){
       a.ratings.forEach(function(r){
         rows.push([
-          a.date, a.auditDate||'', a.auditor, a.agent, a.ticketId||'',
+          a.date, a.auditDate||'', a.auditor, a.agent, a.ticketId||'', a.ticketCategory||'',
           r.param, r.question, r.weight, ratingLabel(r.rating), r.reason, r.comment,
           a.score, a.fatal?'Yes':'No', a.acpt||'', a.summary, a.improvement, a.fatalFeedback, a.submittedAt
         ].map(csvEscape).join(','));
@@ -935,7 +936,7 @@
       + '<button type="button" class="pill-btn" data-action="copy-json"'+(list.length?'':' disabled')+'>Copy as JSON</button>'
       + '</div></div>';
     out += '<div class="table-wrap" style="margin-top:14px;"><table class="audits"><thead><tr>'
-      + '<th>Call date</th><th>Audit date</th><th>Auditor</th><th>Agent</th><th>Ticket</th><th>Score</th><th>Status</th><th></th><th></th><th></th>'
+      + '<th>PFT Action Date</th><th>Audit date</th><th>Auditor</th><th>Agent</th><th>Ticket</th><th>Ticket Category</th><th>Score</th><th>Status</th><th></th><th></th><th></th>'
       + '</tr></thead><tbody>';
     list.forEach(function(a){
       var st = statusOf(a);
@@ -945,6 +946,7 @@
         + '<td>'+esc(a.auditor)+'</td>'
         + '<td>'+esc(a.agent)+'</td>'
         + '<td>'+esc(a.ticketId||'—')+'</td>'
+        + '<td>'+esc(a.ticketCategory||'—')+'</td>'
         + '<td class="mono">'+a.score+'/100</td>'
         + '<td><span class="status-badge '+st.cls+'">'+st.label+'</span></td>'
         + '<td><button type="button" class="link-btn" data-action="toggle-expand" data-id="'+a.id+'">'+(expanded[a.id]?'Hide':'Details')+'</button></td>'
@@ -982,7 +984,7 @@
     var errs = [];
     if(!fs.meta.auditor.trim()) errs.push('Auditor name is required.');
     if(!fs.meta.agent) errs.push('Please select an agent.');
-    if(!fs.meta.date) errs.push('Please select a call date.');
+    if(!fs.meta.date) errs.push('Please select a PFT action date.');
     if(!fs.meta.auditDate) errs.push('Please select an audit date.');
     fs.ratings.forEach(function(r, i){
       if(!r.rating) errs.push('Please rate: "'+PARAMS[i].question+'".');
@@ -1008,6 +1010,7 @@
       auditor: formState.meta.auditor.trim(),
       agent: formState.meta.agent,
       ticketId: formState.meta.ticketId.trim(),
+      ticketCategory: formState.meta.ticketCategory.trim(),
       ratings: formState.ratings.map(function(r,i){
         return {param:PARAMS[i].group, question:PARAMS[i].question, weight:PARAMS[i].weight, rating:r.rating, reason:r.reason.trim(), comment:r.comment.trim()};
       }),
@@ -1104,7 +1107,7 @@
     if(field==='reason' || field==='comment'){
       var idx = parseInt(e.target.getAttribute('data-idx'),10);
       formState.ratings[idx][field] = e.target.value;
-    }else if(field==='ticketId' || field==='summary' || field==='improvement' || field==='fatalFeedback'){
+    }else if(field==='ticketId' || field==='ticketCategory' || field==='summary' || field==='improvement' || field==='fatalFeedback'){
       formState.meta[field] = e.target.value;
     }
   });
