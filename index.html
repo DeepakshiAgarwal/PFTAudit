@@ -282,15 +282,20 @@
   }
 
   function computeScore(ratings){
-    var fatal = false, score = 0;
+    var fatal = false, ztBreach = false, score = 0;
     ratings.forEach(function(r, i){
       var p = PARAMS[i];
       if(r.rating === 'Fatal') fatal = true;
-      if(p.zt && r.rating === 'No') fatal = true;
+      if(p.zt && r.rating === 'No'){ fatal = true; ztBreach = true; }
       if(r.rating === 'Yes' || r.rating === 'NA') score += p.weight;
     });
-    if(fatal) score = 0;
-    return {score:score, fatal:fatal};
+    // A ZTP (zero-tolerance) breach still zeroes the whole score by design.
+    // Marking a regular parameter "Fatal" is still tracked and flagged
+    // (fatal audits, required Fatal Feedback, red Slack coloring, etc.) but
+    // no longer wipes out the score — that parameter simply earns no
+    // weight, same as a "No", while everything else still counts.
+    if(ztBreach) score = 0;
+    return {score:score, fatal:fatal, ztBreach:ztBreach};
   }
 
   function ratingLabel(v){ return v==='NA' ? 'N/A' : v; }
@@ -542,7 +547,9 @@
 
   function scorePreviewHTML(res){
     var cls = scoreClass(res);
-    var subtitle = res.fatal ? 'Fatal / ZTP breach marked — score forced to 0' : (res.score>=PASS_THRESHOLD ? 'Meets pass threshold ('+PASS_THRESHOLD+')' : 'Below pass threshold ('+PASS_THRESHOLD+')');
+    var subtitle = res.ztBreach ? 'ZTP breach marked — score forced to 0'
+      : (res.fatal ? 'Fatal marked — that parameter scores 0, rest of the call still counts'
+      : (res.score>=PASS_THRESHOLD ? 'Meets pass threshold ('+PASS_THRESHOLD+')' : 'Below pass threshold ('+PASS_THRESHOLD+')'));
     return '<div class="score-panel"><div class="score-num mono '+cls+'">'+res.score+'<span style="font-size:16px;color:var(--text-muted);">/100</span></div>'
       + '<div class="score-sub">Live score based on weighted parameters.<br>'+esc(subtitle)+'</div></div>';
   }
