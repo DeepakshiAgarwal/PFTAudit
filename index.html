@@ -794,16 +794,16 @@
     return {start: fmtDate(start), end: fmtDate(today)};
   }
 
-  function scoreCellHTML(avg){
-    if(avg===null) return '<td class="mono">—</td>';
-    var cls = avg>=PASS_THRESHOLD ? 'cell-good' : (avg>=MID_THRESHOLD ? 'cell-mid' : 'cell-bad');
-    return '<td class="mono '+cls+'">'+avg+'</td>';
+  function scoreCellHTML(stat){
+    if(stat===null) return '<td class="mono">—</td>';
+    var cls = stat.avg>=PASS_THRESHOLD ? 'cell-good' : (stat.avg>=MID_THRESHOLD ? 'cell-mid' : 'cell-bad');
+    return '<td class="mono '+cls+'">'+stat.avg+' ('+stat.count+')</td>';
   }
 
   function avgScoreInRange(list, agent, start, end){
     var rows = list.filter(function(a){ return a.agent===agent && a.auditDate>=start && a.auditDate<=end; });
     if(!rows.length) return null;
-    return Math.round(rows.reduce(function(s,a){return s+a.score;},0)/rows.length);
+    return {avg: Math.round(rows.reduce(function(s,a){return s+a.score;},0)/rows.length), count: rows.length};
   }
 
   function renderAuditorProductivity(allAudits){
