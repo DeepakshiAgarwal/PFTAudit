@@ -115,14 +115,10 @@
 '.auto-chip{font-size:12px;font-weight:600;padding:3px 10px;border-radius:999px;background:var(--surface-2);color:var(--text-muted);}',
 '.transcript-box{max-height:300px;overflow:auto;background:var(--surface-2);border-radius:8px;padding:10px 12px;font-size:12.5px;line-height:1.6;margin-top:8px;}',
 '.ai-flag{display:inline-block;margin-left:6px;font-size:11px;font-weight:600;color:var(--warning);background:var(--warning-soft);padding:2px 7px;border-radius:999px;}',
-'.auto-manual{background:var(--warning-soft);border-radius:10px;padding:10px 12px;margin:10px 0;}',
-'.auto-manual-title{font-size:12px;font-weight:700;color:var(--warning);margin-bottom:8px;}',
-'.auto-manual-item{display:grid;grid-template-columns:1.4fr 1fr 1.2fr;gap:10px;align-items:center;margin-bottom:8px;}',
-'.auto-manual-item:last-child{margin-bottom:0;}',
 '.auto-ready{font-size:12.5px;color:var(--text-muted);margin-top:10px;}',
 '.auto-bulk{border:1px solid var(--accent);background:var(--accent-soft);border-radius:12px;padding:14px 16px;margin-bottom:14px;}',
 '.auto-bulk-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:10px;}',
-'@media (max-width:700px){.auto-row-meta,.auto-bulk-grid,.auto-manual-item{grid-template-columns:1fr;}}',
+'@media (max-width:700px){.auto-row-meta,.auto-bulk-grid{grid-template-columns:1fr;}}',
 '.seg{display:flex;gap:6px;}',
 '.seg-btn{flex:1;border:1px solid var(--border);background:var(--surface);color:var(--text-muted);font-family:inherit;font-weight:600;font-size:12.5px;padding:8px 6px;border-radius:8px;cursor:pointer;}',
 '.seg-btn.seg-active.seg-yes{background:var(--success-soft);border-color:var(--success);color:var(--success);}',
@@ -325,10 +321,13 @@
     return {score:score, fatal:fatal, ztBreach:ztBreach};
   }
 
-  function ratingLabel(v){ return v==='NA' ? 'N/A' : v; }
+  function ratingLabel(v){ return v==='NA' ? 'N/A' : (v ? v : 'Not assessed'); }
 
+  // Items an AI audit could not judge have no rating; they are left out of
+  // the category score (null when nothing in the category was assessed).
   function auditCategoryScore(audit, cat){
-    var rows = audit.ratings.filter(function(r){ return r.param===cat; });
+    var rows = audit.ratings.filter(function(r){ return r.param===cat && r.rating; });
+    if(!rows.length) return null;
     var maxW = rows.reduce(function(s,r){ return s+r.weight; }, 0);
     if(maxW === 0){
       var breached = rows.some(function(r){ return r.rating==='No' || r.rating==='Fatal'; });
@@ -920,7 +919,7 @@
       out += '<tr><td><strong>'+esc(cat)+'</strong></td>';
       agentsPresent.forEach(function(ag){
         var audits = byAgent[ag];
-        var scores = audits.map(function(a){ return auditCategoryScore(a, cat); });
+        var scores = audits.map(function(a){ return auditCategoryScore(a, cat); }).filter(function(v){ return v !== null; });
         var avg = scores.length ? Math.round(scores.reduce(function(s,v){return s+v;},0)/scores.length) : null;
         var cellCls = avg===null ? '' : (avg>=PASS_THRESHOLD ? 'cell-good' : (avg>=MID_THRESHOLD ? 'cell-mid' : 'cell-bad'));
         out += '<td class="mono '+cellCls+'">'+(avg===null?'—':avg+'%')+'</td>';
@@ -1236,7 +1235,7 @@
     analysisQueue = [];
     autoAudit.rows = urls.map(function(u){
       return {url:u, agent:autoAudit.defaultAgent, ticketId:'', status:'submitting', progress:'Sending to transcription…', recordId:null, transcript:null, analysis:null, error:'',
-        manual:{}, include:true, submitted:false, saveError:''};
+        include:true, submitted:false, saveError:''};
     });
     autoAudit.jobId = null;
     render();
@@ -1335,18 +1334,51 @@
     analysisBusy = false;
   }
 
-  // Ratings as the audit form understands them. "Unverifiable" stays unrated
-  // unless the auditor answered it inline, so nobody inherits a guess.
+  // Ratings as the audit form understands them. Items the AI could not judge
+  // from the call ("Unverifiable") stay unrated: they are not guessed, and an
+  // AI-only audit simply does not score them.
   function analysisRatings(row){
     return PARAMS.map(function(p, i){
       var r = row.analysis.ratings[i];
-      if(!r || r.rating === 'Unverifiable'){
-        var m = row.manual[i];
-        if(m && m.rating) return {rating:m.rating, reason:m.reason||'', comment:''};
-        return {rating:null, reason:'', comment:r ? r.comment : ''};
-      }
-      return {rating:r.rating, reason:r.reason||'', comment:r.comment||''};
+      if(!r || r.rating === 'Unverifiable') return {rating:null, reason:'', comment:r ? r.comment : ''};
+      var reason = r.reason || '';
+      if((r.rating === 'No' || r.rating === 'Fatal') && !String(reason).trim()) reason = r.comment || 'Not met';
+      return {rating:r.rating, reason:reason, comment:r.comment || ''};
     });
+  }
+
+  // Score for an AI-only audit: judged on the parameters that could be assessed
+  // from the call. Earned weight over assessable weight, as a percent, so the
+  // items the audio cannot show neither help nor hurt. When every parameter is
+  // assessed this is identical to computeScore().
+  function scoreAssessed(ratings){
+    var earned = 0, possible = 0, assessed = 0, fatal = false, ztBreach = false;
+    ratings.forEach(function(r, i){
+      var p = PARAMS[i];
+      if(!r.rating) return;
+      assessed++;
+      possible += p.weight;
+      if(r.rating === 'Fatal') fatal = true;
+      if(p.zt && r.rating === 'No'){ fatal = true; ztBreach = true; }
+      if(r.rating === 'Yes' || r.rating === 'NA') earned += p.weight;
+    });
+    var score = possible ? Math.round(earned / possible * 100) : 0;
+    if(ztBreach) score = 0;
+    return {score:score, fatal:fatal, ztBreach:ztBreach, assessed:assessed, total:ratings.length, scorable:possible > 0};
+  }
+
+  // Was the customer asked to rate the call? Read from the CSAT parameter.
+  var CSAT_INDEX = (function(){
+    for(var i = 0; i < PARAMS.length; i++){ if(PARAMS[i].group === 'CSAT Triggered') return i; }
+    return -1;
+  })();
+
+  function csatPitched(ratings){
+    var r = CSAT_INDEX >= 0 ? ratings[CSAT_INDEX] : null;
+    if(!r || !r.rating) return {label:'CSAT pitched: not clear from the call', cls:'status-mid', comment:''};
+    if(r.rating === 'Yes') return {label:'CSAT pitched: Yes', cls:'status-pass', comment:r.comment};
+    if(r.rating === 'NA') return {label:'CSAT pitched: N/A', cls:'status-mid', comment:r.comment};
+    return {label:'CSAT pitched: No', cls:'status-fail', comment:r.comment};
   }
 
   // What still stops this call from being submitted in bulk (empty = ready).
@@ -1354,15 +1386,9 @@
     if(row.status !== 'done' || !row.analysis) return ['not scored yet'];
     var problems = [];
     if(!row.agent) problems.push('choose an agent');
-    var ratings = analysisRatings(row);
-    var missing = 0, noReason = 0;
-    ratings.forEach(function(r){
-      if(!r.rating) missing++;
-      else if((r.rating==='No' || r.rating==='Fatal') && !String(r.reason).trim()) noReason++;
-    });
-    if(missing) problems.push('rate '+missing+' parameter'+(missing>1?'s':'')+' below');
-    if(noReason) problems.push('give a reason for '+noReason+' parameter'+(noReason>1?'s':''));
-    if(computeScore(ratings).fatal && !String(row.analysis.fatalFeedback||'').trim()) problems.push('add fatal feedback (use "Open in audit form")');
+    var res = scoreAssessed(analysisRatings(row));
+    if(!res.scorable) problems.push('the AI could not assess anything from this call');
+    if(res.fatal && !String(row.analysis.fatalFeedback||'').trim()) problems.push('add fatal feedback (use "Open in audit form")');
     return problems;
   }
 
@@ -1410,7 +1436,7 @@
       row.saveError = '';
       render();
       var ratings = analysisRatings(row);
-      var res = computeScore(ratings);
+      var res = scoreAssessed(ratings);
       var a = row.analysis;
       var audit = {
         id: uid(),
@@ -1421,7 +1447,8 @@
         ticketId: row.ticketId.trim(),
         ticketCategory: '',
         ratings: ratings.map(function(r, i){
-          return {param:PARAMS[i].group, question:PARAMS[i].question, weight:PARAMS[i].weight, rating:r.rating, reason:String(r.reason||'').trim(), comment:String(r.comment||'').trim()};
+          return {param:PARAMS[i].group, question:PARAMS[i].question, weight:PARAMS[i].weight, rating:r.rating, reason:String(r.reason||'').trim(),
+            comment: r.rating ? String(r.comment||'').trim() : 'Not assessed — not in the call audio (AI audit)'};
         }),
         score: res.score,
         fatal: res.fatal,
@@ -1457,34 +1484,6 @@
     return '<span class="status-badge status-mid">'+esc(row.progress || 'Working…')+'</span>';
   }
 
-  function renderManualChecks(row, idx){
-    var manualIdx = [];
-    row.analysis.ratings.forEach(function(r, i){ if(r.rating === 'Unverifiable') manualIdx.push(i); });
-    if(!manualIdx.length) return '';
-    var out = '<div class="auto-manual"><div class="auto-manual-title">Needs your check — this is not in the call audio</div>';
-    manualIdx.forEach(function(i){
-      var p = PARAMS[i];
-      var m = row.manual[i] || {};
-      out += '<div class="auto-manual-item"><div class="q-text" style="padding-top:0;">'+esc(p.question)+'<span class="q-weight">'+p.weight+' pts</span></div>';
-      out += '<div class="seg">' + ['Yes','No','NA'].map(function(v){
-        return '<button type="button" class="seg-btn seg-'+v.toLowerCase()+(m.rating===v?' seg-active':'')+'" data-action="auto-manual-rate" data-row="'+idx+'" data-idx="'+i+'" data-value="'+v+'">'+ratingLabel(v)+'</button>';
-      }).join('') + '</div>';
-      if(m.rating === 'No'){
-        if(p.reasons && p.reasons.length){
-          out += '<select data-field="auto-manual-reason" data-row="'+idx+'" data-idx="'+i+'" class="reason-select" style="margin:0;"><option value="">Select a reason…</option>'
-            + p.reasons.map(function(rs){ return '<option value="'+esc(rs)+'"'+(m.reason===rs?' selected':'')+'>'+esc(rs)+'</option>'; }).join('') + '</select>';
-        }else{
-          out += '<input type="text" data-field="auto-manual-reason" data-row="'+idx+'" data-idx="'+i+'" value="'+esc(m.reason||'')+'" placeholder="Reason">';
-        }
-      }else{
-        out += '<div></div>';
-      }
-      out += '</div>';
-    });
-    out += '</div>';
-    return out;
-  }
-
   function renderAutoRow(row, idx){
     var out = '<div class="auto-row">';
     out += '<div class="auto-row-head"><div class="auto-row-url">'+esc(row.url.length>90 ? row.url.slice(0,87)+'…' : row.url)+'</div>'+autoStatusBadge(row)+'</div>';
@@ -1504,15 +1503,20 @@
 
     if(row.analysis){
       var ratings = analysisRatings(row);
-      var res = computeScore(ratings);
-      var counts = {Yes:0, No:0, Fatal:0, NA:0, manual:0};
-      ratings.forEach(function(r){ if(r.rating===null) counts.manual++; else counts[r.rating]++; });
+      var res = scoreAssessed(ratings);
+      var counts = {Yes:0, No:0, Fatal:0, NA:0, skipped:0};
+      ratings.forEach(function(r){ if(r.rating===null) counts.skipped++; else counts[r.rating]++; });
       var st = res.fatal ? {label:'Fatal', cls:'status-fatal'} : (res.score>=PASS_THRESHOLD ? {label:'Pass', cls:'status-pass'} : (res.score>=MID_THRESHOLD ? {label:'Needs Improvement', cls:'status-mid'} : {label:'Fail', cls:'status-fail'}));
+      var csat = csatPitched(ratings);
       out += '<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">'
-        + '<span class="mono" style="font-size:22px;font-weight:600;">'+res.score+'<span style="font-size:13px;color:var(--text-muted);">/100</span></span>'
-        + '<span class="status-badge '+st.cls+'">'+st.label+'</span>'
-        + (counts.manual ? '<span class="ai-flag" style="margin:0;">'+counts.manual+' parameter(s) still to rate — not counted in this score</span>' : '')
+        + (res.scorable
+          ? '<span class="mono" style="font-size:22px;font-weight:600;">'+res.score+'<span style="font-size:13px;color:var(--text-muted);">/100</span></span><span class="status-badge '+st.cls+'">'+st.label+'</span>'
+          : '<span class="status-badge status-mid">Could not be scored</span>')
+        + '<span class="status-badge '+csat.cls+'">'+esc(csat.label)+'</span>'
         + '</div>';
+      out += '<div class="auto-ready" style="margin-top:6px;">AI audit: scored on '+res.assessed+' of '+res.total+' parameters'
+        + (counts.skipped ? ' — the other '+counts.skipped+' (e.g. internal notes, ticket status) cannot be judged from a call recording and are left out of the score' : '')
+        + '.' + (csat.comment ? ' CSAT: '+esc(csat.comment) : '') + '</div>';
       out += '<div class="auto-chips"><span class="auto-chip">Yes '+counts.Yes+'</span><span class="auto-chip">No '+counts.No+'</span><span class="auto-chip">Fatal '+counts.Fatal+'</span><span class="auto-chip">N/A '+counts.NA+'</span>'
         + (row.analysis.acpt ? '<span class="auto-chip">ACPT: '+esc(row.analysis.acpt)+'</span>' : '') + '</div>';
       if(row.analysis.summary) out += '<div class="auto-result"><strong>Summary:</strong> '+esc(row.analysis.summary)+'</div>';
@@ -1523,7 +1527,6 @@
       if(flagged.length) out += '<div class="auto-result"><strong>Flagged:</strong><ul style="margin:4px 0 0 18px;padding:0;">'+flagged.join('')+'</ul></div>';
 
       if(!row.submitted){
-        out += renderManualChecks(row, idx);
         var problems = autoRowProblems(row);
         out += '<div class="auto-ready">' + (problems.length
           ? 'Before this can be submitted in bulk: '+esc(problems.join(', '))+'.'
@@ -1571,7 +1574,7 @@
     var busy = autoAudit.checking || autoAudit.rows.some(autoRowBusy);
     var out = '<div class="card" style="padding:20px;margin-bottom:20px;">';
     out += '<h2 class="section-title">Auto audit</h2>';
-    out += '<p class="section-sub">Paste call recording links, one per line — as many as you like. Each call is transcribed and scored by AI. Fill in anything the AI could not check, then submit the whole batch at once, or open a single call in the audit form to review it in detail.</p>';
+    out += '<p class="section-sub">Paste call recording links, one per line — as many as you like. Each call is transcribed and scored by AI on what can be judged from the call itself. Submit the whole batch at once, or open a single call in the audit form to review it in detail.</p>';
 
     out += '<div class="field" style="margin-bottom:14px;"><label>Recording links</label>'
       + '<textarea data-field="auto-urls" rows="5" placeholder="One recording link per line">'+esc(autoAudit.urls)+'</textarea></div>';
@@ -1783,16 +1786,6 @@
     else if(action==='auto-toggle-transcript'){ var ti = actionEl.getAttribute('data-idx'); autoAudit.openTranscripts[ti] = !autoAudit.openTranscripts[ti]; render(); }
     else if(action==='toggle-form-transcript'){ formState.showTranscript = !formState.showTranscript; render(); }
     else if(action==='auto-submit-batch'){ submitAutoBatch(); }
-    else if(action==='auto-manual-rate'){
-      var mrow = autoAudit.rows[parseInt(actionEl.getAttribute('data-row'),10)];
-      var mi = parseInt(actionEl.getAttribute('data-idx'),10);
-      var mv = actionEl.getAttribute('data-value');
-      if(mrow){
-        var prev = mrow.manual[mi] || {};
-        mrow.manual[mi] = {rating:mv, reason: (mv==='No' ? (prev.reason||'') : '')};
-        render();
-      }
-    }
     else if(action==='notify-slack'){
       var nid = actionEl.getAttribute('data-id');
       notifySlackRemote(nid).then(function(ok){
@@ -1816,11 +1809,6 @@
       formState.meta[field] = e.target.value;
     }else if(field==='auto-urls'){ autoAudit.urls = e.target.value; }
     else if(field==='auto-row-ticket'){ var tr = autoAudit.rows[parseInt(e.target.getAttribute('data-idx'),10)]; if(tr) tr.ticketId = e.target.value; }
-    else if(field==='auto-manual-reason'){
-      var rr2 = autoAudit.rows[parseInt(e.target.getAttribute('data-row'),10)];
-      var ri2 = parseInt(e.target.getAttribute('data-idx'),10);
-      if(rr2 && rr2.manual[ri2]){ rr2.manual[ri2].reason = e.target.value; autoDirty = true; }
-    }
     else if(field==='report-process'){ weeklyReport.process = e.target.value; }
     else if(field==='report-aoi'){ weeklyReport.aoi = e.target.value; autosizeTextarea(e.target); }
     else if(field==='report-gaps'){ weeklyReport.processGaps = e.target.value; autosizeTextarea(e.target); }
@@ -1851,12 +1839,6 @@
     if(field==='auto-bulk-auditor'){ autoAudit.bulk.auditor = e.target.value; return; }
     if(field==='auto-bulk-date'){ autoAudit.bulk.date = e.target.value; return; }
     if(field==='auto-bulk-auditdate'){ autoAudit.bulk.auditDate = e.target.value; return; }
-    if(field==='auto-manual-reason'){
-      var rr3 = autoAudit.rows[parseInt(e.target.getAttribute('data-row'),10)];
-      var ri3 = parseInt(e.target.getAttribute('data-idx'),10);
-      if(rr3 && rr3.manual[ri3]){ rr3.manual[ri3].reason = e.target.value; render(); }
-      return;
-    }
     if(field==='report-from'){ weeklyReport.from = e.target.value; render(); return; }
     if(field==='report-to'){ weeklyReport.to = e.target.value; render(); return; }
   });

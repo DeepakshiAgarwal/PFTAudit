@@ -23,7 +23,7 @@ This is now a normal client-server web app — a static page (`index.html`) plus
 
 ## Auto audit setup (transcribe + AI-score calls)
 
-The **Auto Audit** tab takes call recording links, gets a transcript from the internal QMS transcription tool (`qms.wiom.in/transcription`), and has an AI model score the call against the 13 scorecard parameters. The result opens in the normal audit form pre-filled; the auditor checks it and submits under their own name, so scoring, Slack alerts, ACPT and every report work exactly as before. Parameters that depend on system data rather than the call audio (Kapture notes, ticket disposition) are left blank for the auditor to rate.
+The **Auto Audit** tab takes call recording links, gets a transcript from the internal QMS transcription tool (`qms.wiom.in/transcription`), and has an AI model score the call against the 13 scorecard parameters. Each call shows its score, whether the CSAT was pitched, and the flagged items. The score covers only what can be judged from the call itself: parameters that depend on system data rather than the call audio (Kapture notes, ticket disposition, whether a system was really checked) are left out and shown as "Not assessed", and the score is earned points out of the points that were assessed, scaled to 100. Ready calls can be saved in bulk under a chosen auditor, or a call can be opened in the normal audit form for a closer review (where every parameter must be rated before it can be submitted).
 
 One-time setup:
 

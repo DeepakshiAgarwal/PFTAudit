@@ -370,6 +370,7 @@ function buildAuditSystemPrompt(params){
     '- Fatal: only for a severe breach of that parameter (abusive or rude behaviour, a false commitment, seriously wrong information that harms the customer). Never use Fatal where the parameter says Fatal NOT allowed. When unsure between No and Fatal, choose No.',
     '- Unverifiable: use this when the parameter depends on information that is not in the call audio, such as CRM or Kapture notes, ticket dispositions, status updates, or whether the agent really checked a system. Do not guess these.',
     '- Be strict and consistent. Judge only what is in the transcript. If a transcript is too short or garbled to judge, rate Unverifiable and say so in the summary.',
+    '- For the parameter about asking the customer to give a rating (CSAT): Yes only if the agent explicitly asked the customer to rate the service or the call, or to give feedback or a survey rating, before the call ended (in any wording or language). No if the call ended without that ask. NA only if the call never connected or ended before any conversation. In the comment, say in a few words what was or was not said.',
     '- Keep every comment, the summary and the improvement notes in plain English even though the call is in Hindi.',
     '- Return the finished audit in the required structured format only (the submit_audit result).'
   ].join('\n');
