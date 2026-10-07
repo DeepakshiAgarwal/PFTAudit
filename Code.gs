@@ -369,7 +369,7 @@ function buildAuditSystemPrompt(params){
     '- Unverifiable: use this when the parameter depends on information that is not in the call audio, such as CRM or Kapture notes, ticket dispositions, status updates, or whether the agent really checked a system. Do not guess these.',
     '- Be strict and consistent. Judge only what is in the transcript. If a transcript is too short or garbled to judge, rate Unverifiable and say so in the summary.',
     '- Keep every comment, the summary and the improvement notes in plain English even though the call is in Hindi.',
-    '- Submit your result only by calling the submit_audit tool.'
+    '- Return the finished audit in the required structured format only (the submit_audit result).'
   ].join('\n');
 }
 
@@ -445,6 +445,92 @@ function callClaude(system, userText, tool){
   return {ok:true, json: json, model: model};
 }
 
+// ----- Provider choice -----
+// Script Property AI_PROVIDER: "anthropic" (default) or "gemini".
+//   anthropic -> ANTHROPIC_API_KEY, optional CLAUDE_MODEL
+//   gemini    -> GEMINI_API_KEY,    optional GEMINI_MODEL
+
+var GEMINI_MODEL_DEFAULT = 'gemini-flash-latest';
+
+function aiProvider(){
+  var v = PropertiesService.getScriptProperties().getProperty('AI_PROVIDER');
+  return String(v || 'anthropic').toLowerCase() === 'gemini' ? 'gemini' : 'anthropic';
+}
+
+// The scorecard schema is written once in Claude's tool format; Gemini wants
+// the same shape with upper-case type names, and it dislikes an empty-string
+// enum value, so that enum is dropped (sanitizeAnalysis re-validates anyway).
+function toGeminiSchema(s){
+  var out = {type: String(s.type).toUpperCase()};
+  if (s.description) out.description = s.description;
+  if (s.enum && s.enum.indexOf('') === -1) out.enum = s.enum;
+  if (s.required) out.required = s.required;
+  if (s.properties) {
+    out.properties = {};
+    Object.keys(s.properties).forEach(function(k){ out.properties[k] = toGeminiSchema(s.properties[k]); });
+  }
+  if (s.items) out.items = toGeminiSchema(s.items);
+  return out;
+}
+
+function callGemini(system, userText, tool){
+  var props = PropertiesService.getScriptProperties();
+  var key = props.getProperty('GEMINI_API_KEY');
+  if (!key) return {ok:false, error:'GEMINI_API_KEY script property is not set.'};
+  var model = props.getProperty('GEMINI_MODEL') || GEMINI_MODEL_DEFAULT;
+
+  var payload = {
+    systemInstruction: {parts: [{text: system}]},
+    contents: [{role: 'user', parts: [{text: userText}]}],
+    generationConfig: {maxOutputTokens: 4096}
+  };
+  if (tool) {
+    payload.generationConfig.responseMimeType = 'application/json';
+    payload.generationConfig.responseSchema = toGeminiSchema(tool.input_schema);
+  }
+
+  var resp = UrlFetchApp.fetch('https://generativelanguage.googleapis.com/v1beta/models/' + model + ':generateContent', {
+    method: 'post',
+    contentType: 'application/json',
+    headers: {'x-goog-api-key': key},
+    payload: JSON.stringify(payload),
+    muteHttpExceptions: true
+  });
+  var code = resp.getResponseCode();
+  var json = null;
+  try { json = JSON.parse(resp.getContentText()); } catch (err) {}
+  if (code !== 200 || !json) {
+    var msg = json && json.error && json.error.message ? json.error.message : ('HTTP ' + code);
+    return {ok:false, error:'AI request failed: ' + msg};
+  }
+  var cand = json.candidates && json.candidates[0];
+  var text = cand && cand.content && cand.content.parts
+    ? cand.content.parts.map(function(p){ return p.text || ''; }).join('') : '';
+  if (!text) {
+    var why = (json.promptFeedback && json.promptFeedback.blockReason) || (cand && cand.finishReason) || 'no content';
+    return {ok:false, error:'AI request failed: Gemini returned no answer (' + why + ').'};
+  }
+  return {ok:true, text: text, model: model};
+}
+
+// Runs one audit with whichever provider is selected and returns the
+// structured result object the model produced.
+function runAuditModel(system, userText, tool){
+  if (aiProvider() === 'gemini') {
+    var g = callGemini(system, userText, tool);
+    if (!g.ok) return g;
+    var parsed = null;
+    try { parsed = JSON.parse(g.text); } catch (err) {}
+    if (!parsed || typeof parsed !== 'object') return {ok:false, error:'AI did not return a readable audit. Try again.'};
+    return {ok:true, input: parsed, model: g.model};
+  }
+  var c = callClaude(system, userText, tool);
+  if (!c.ok) return c;
+  var block = (c.json.content || []).filter(function(b){ return b.type === 'tool_use'; })[0];
+  if (!block || !block.input) return {ok:false, error:'AI did not return a scored audit. Try again.'};
+  return {ok:true, input: block.input, model: c.model};
+}
+
 function analyzeTranscript(body){
   var params = body.params;
   var transcript = String(body.transcript || '').trim();
@@ -452,23 +538,23 @@ function analyzeTranscript(body){
   if (!transcript) return {ok:false, error:'Empty transcript.'};
   if (transcript.length > MAX_TRANSCRIPT_CHARS) transcript = transcript.substring(0, MAX_TRANSCRIPT_CHARS);
 
-  var tool = buildAuditTool();
-  var r = callClaude(buildAuditSystemPrompt(params), 'Transcript of the call to audit:\n\n' + transcript, tool);
+  var r = runAuditModel(buildAuditSystemPrompt(params), 'Transcript of the call to audit:\n\n' + transcript, buildAuditTool());
   if (!r.ok) return r;
-
-  var block = (r.json.content || []).filter(function(b){ return b.type === 'tool_use'; })[0];
-  if (!block || !block.input) return {ok:false, error:'AI did not return a scored audit. Try again.'};
-  return {ok:true, model: r.model, analysis: sanitizeAnalysis(block.input, params)};
+  return {ok:true, model: r.model, analysis: sanitizeAnalysis(r.input, params)};
 }
 
 function testAi(){
-  var key = PropertiesService.getScriptProperties().getProperty('ANTHROPIC_API_KEY');
-  if (!key) return {configured:false, message:'ANTHROPIC_API_KEY script property is not set. Go to Project Settings (gear icon) > Script Properties and add it.'};
+  var provider = aiProvider();
+  var keyName = provider === 'gemini' ? 'GEMINI_API_KEY' : 'ANTHROPIC_API_KEY';
+  var key = PropertiesService.getScriptProperties().getProperty(keyName);
+  if (!key) return {provider: provider, configured:false, message: keyName + ' script property is not set. Go to Project Settings (gear icon) > Script Properties and add it.'};
   try {
-    var r = callClaude('Reply with the single word OK.', 'ping', null);
-    if (!r.ok) return {configured:true, ok:false, error:r.error};
-    return {configured:true, ok:true, model:r.model};
+    var r = provider === 'gemini'
+      ? callGemini('Reply with the single word OK.', 'ping', null)
+      : callClaude('Reply with the single word OK.', 'ping', null);
+    if (!r.ok) return {provider: provider, configured:true, ok:false, error:r.error};
+    return {provider: provider, configured:true, ok:true, model:r.model};
   } catch (err) {
-    return {configured:true, ok:false, error:String(err)};
+    return {provider: provider, configured:true, ok:false, error:String(err)};
   }
 }

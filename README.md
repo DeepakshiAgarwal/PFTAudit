@@ -31,6 +31,14 @@ One-time setup:
 2. **Add the AI key.** Project Settings (gear icon) → Script Properties → add `ANTHROPIC_API_KEY` with the key value. Optionally add `CLAUDE_MODEL` to pick a different model (default is `claude-sonnet-5-5`). The key stays in Google's Script Properties and never goes into this repo.
 3. **Check it.** Open the `/exec` URL with `?test=qms` on the end (should say `"reachable":true`), then with `?test=ai` (should say `"ok":true`). `?test=ai` makes one tiny AI call.
 
+Using Google Gemini instead of Claude:
+
+1. Create an API key at [aistudio.google.com/apikey](https://aistudio.google.com/apikey). A Gemini app subscription (Google AI Pro etc.) does **not** include API usage; the API has its own free tier and its own billing.
+2. In Script Properties add `GEMINI_API_KEY` (the key) and `AI_PROVIDER` with the value `gemini`. Optionally add `GEMINI_MODEL` to pick a model (default `gemini-flash-latest`). Set `AI_PROVIDER` back to `anthropic` (or delete it) to return to Claude.
+3. Check with `?test=ai` on the `/exec` URL — it reports which provider it used.
+
+Google's terms treat free-tier prompts differently from paid-tier API data (free-tier content may be used to improve their products). Check the current terms before sending customer call transcripts through a free key.
+
 Notes:
 
 - Call transcripts are sent to the AI provider for scoring. Check that your company policy allows this before using real customer calls.
