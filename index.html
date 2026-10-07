@@ -230,7 +230,7 @@
     {group:'Resolution & Process Adherence', question:'Accurate and Complete resolution provided', weight:10, reasons:[
       'Incorrect information shared','Incomplete information shared','Partially query addressed','Irrelevant information shared','Did not correct customer\'s understanding','System information not checked','Did false commitment'
     ]},
-    {group:'Resolution & Process Adherence', question:'SOP Followed: Were document/link requests and refund steps handled as per SOP', weight:10},
+    {group:'Resolution & Process Adherence', question:'SOP Followed: Were document/link requests and refund steps handled as per SOP', weight:10, aiSkip:true},
     {group:'Tool Management / Documentation', question:'Did the agent update the internal notes', weight:10, reasons:[
       'Notes Not Updated on Kapture','Incorrect Notes Updated','Partial notes updates'
     ]},
@@ -1192,7 +1192,7 @@
 
   function scorecardForAI(){
     return PARAMS.map(function(p){
-      return {group:p.group, question:p.question, weight:p.weight, noFatal:!!p.noFatal, zt:!!p.zt, reasons:p.reasons||[]};
+      return {group:p.group, question:p.question, weight:p.weight, noFatal:!!p.noFatal, zt:!!p.zt, reasons:p.reasons||[], skip:!!p.aiSkip};
     });
   }
 
@@ -1340,7 +1340,8 @@
   function analysisRatings(row){
     return PARAMS.map(function(p, i){
       var r = row.analysis.ratings[i];
-      if(!r || r.rating === 'Unverifiable') return {rating:null, reason:'', comment:r ? r.comment : ''};
+      // aiSkip parameters (e.g. SOP Followed) are never judged by the AI, whatever it returns.
+      if(p.aiSkip || !r || r.rating === 'Unverifiable') return {rating:null, reason:'', comment:(!p.aiSkip && r) ? r.comment : ''};
       var reason = r.reason || '';
       if((r.rating === 'No' || r.rating === 'Fatal') && !String(reason).trim()) reason = r.comment || 'Not met';
       return {rating:r.rating, reason:reason, comment:r.comment || ''};
@@ -1448,7 +1449,7 @@
         ticketCategory: '',
         ratings: ratings.map(function(r, i){
           return {param:PARAMS[i].group, question:PARAMS[i].question, weight:PARAMS[i].weight, rating:r.rating, reason:String(r.reason||'').trim(),
-            comment: r.rating ? String(r.comment||'').trim() : 'Not assessed — not in the call audio (AI audit)'};
+            comment: r.rating ? String(r.comment||'').trim() : 'Not assessed — cannot be judged from a call recording (AI audit)'};
         }),
         score: res.score,
         fatal: res.fatal,
@@ -1515,7 +1516,7 @@
         + '<span class="status-badge '+csat.cls+'">'+esc(csat.label)+'</span>'
         + '</div>';
       out += '<div class="auto-ready" style="margin-top:6px;">AI audit: scored on '+res.assessed+' of '+res.total+' parameters'
-        + (counts.skipped ? ' — the other '+counts.skipped+' (e.g. internal notes, ticket status) cannot be judged from a call recording and are left out of the score' : '')
+        + (counts.skipped ? ' — the other '+counts.skipped+' (SOP followed, internal notes, ticket status) cannot be judged from a call recording and are left out of the score' : '')
         + '.' + (csat.comment ? ' CSAT: '+esc(csat.comment) : '') + '</div>';
       out += '<div class="auto-chips"><span class="auto-chip">Yes '+counts.Yes+'</span><span class="auto-chip">No '+counts.No+'</span><span class="auto-chip">Fatal '+counts.Fatal+'</span><span class="auto-chip">N/A '+counts.NA+'</span>'
         + (row.analysis.acpt ? '<span class="auto-chip">ACPT: '+esc(row.analysis.acpt)+'</span>' : '') + '</div>';
