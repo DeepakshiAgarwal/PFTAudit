@@ -106,6 +106,16 @@
 '.wr-note-label{font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:var(--text-muted);margin-bottom:6px;}',
 '.wr-textarea{display:block;width:100%;border:none;background:transparent;padding:0;resize:none;overflow:hidden;font-family:inherit;font-size:13.5px;color:var(--text);line-height:1.55;min-height:60px;}',
 '.wr-textarea:focus{outline:1px dashed var(--accent);outline-offset:6px;}',
+'.auto-row{border:1px solid var(--border);border-radius:12px;padding:14px 16px;margin-bottom:12px;background:var(--surface);}',
+'.auto-row-head{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:10px;}',
+'.auto-row-url{font-size:12.5px;word-break:break-all;color:var(--text-muted);}',
+'.auto-row-meta{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:10px;}',
+'.auto-result{font-size:13.5px;line-height:1.55;margin:8px 0;}',
+'.auto-chips{display:flex;gap:6px;flex-wrap:wrap;margin:8px 0;}',
+'.auto-chip{font-size:12px;font-weight:600;padding:3px 10px;border-radius:999px;background:var(--surface-2);color:var(--text-muted);}',
+'.transcript-box{max-height:300px;overflow:auto;background:var(--surface-2);border-radius:8px;padding:10px 12px;font-size:12.5px;line-height:1.6;margin-top:8px;}',
+'.ai-flag{display:inline-block;margin-left:6px;font-size:11px;font-weight:600;color:var(--warning);background:var(--warning-soft);padding:2px 7px;border-radius:999px;}',
+'@media (max-width:700px){.auto-row-meta{grid-template-columns:1fr;}}',
 '.seg{display:flex;gap:6px;}',
 '.seg-btn{flex:1;border:1px solid var(--border);background:var(--surface);color:var(--text-muted);font-family:inherit;font-weight:600;font-size:12.5px;padding:8px 6px;border-radius:8px;cursor:pointer;}',
 '.seg-btn.seg-active.seg-yes{background:var(--success-soft);border-color:var(--success);color:var(--success);}',
@@ -254,6 +264,11 @@
     processGaps: '',
     autoFillKey: ''
   };
+  // Auto Audit tab: recording links -> transcript (QMS) -> AI scoring.
+  var autoAudit = {urls:'', diarize:true, defaultAgent:'', jobId:null, rows:[], error:'', openTranscripts:{}};
+  var analysisQueue = [];
+  var analysisBusy = false;
+  var autoDirty = false;
   var toastMsg = '';
   var toastTimer = null;
   var formState = freshFormState();
@@ -264,6 +279,9 @@
     return {
       meta:{auditor:'', agent:'', date:todayStr(), auditDate:todayStr(), ticketId:'', ticketCategory:'', summary:'', improvement:'', fatalFeedback:'', acpt:''},
       ratings: PARAMS.map(function(){ return {rating:null, reason:'', comment:''}; }),
+      transcript: null,   // set when the form was pre-filled from the Auto Audit tab
+      aiManual: {},       // param indexes the AI could not verify from the call
+      showTranscript: false,
       error:''
     };
   }
@@ -390,7 +408,7 @@
   function render(){
     var html = renderHeader() + '<div class="wrap">'
       + renderSetupBanner()
-      + (activeTab==='submit' ? renderSubmitTab() : (activeTab==='report' ? renderWeeklyReportTab() : renderDashboardTab()))
+      + (activeTab==='submit' ? renderSubmitTab() : (activeTab==='auto' ? renderAutoAuditTab() : (activeTab==='report' ? renderWeeklyReportTab() : renderDashboardTab())))
       + '</div>'
       + (toastMsg ? '<div class="toast">'+esc(toastMsg)+'</div>' : '');
     appEl.innerHTML = html;
@@ -428,6 +446,7 @@
       + syncBadge()
       + '<div class="tabs">'
       + '<button type="button" class="tab-btn'+(activeTab==='submit'?' active':'')+'" data-action="tab" data-tab="submit">Submit Audit</button>'
+      + '<button type="button" class="tab-btn'+(activeTab==='auto'?' active':'')+'" data-action="tab" data-tab="auto">Auto Audit</button>'
       + '<button type="button" class="tab-btn'+(activeTab==='dashboard'?' active':'')+'" data-action="tab" data-tab="dashboard">Dashboard</button>'
       + '<button type="button" class="tab-btn'+(activeTab==='report'?' active':'')+'" data-action="tab" data-tab="report">Weekly Report</button>'
       + '</div></div></div></div>';
@@ -459,6 +478,16 @@
       out += '<div class="banner banner-error">'+esc(formState.error)+'</div>';
     }
 
+    if(formState.transcript){
+      out += '<div class="banner banner-warning" style="margin-bottom:14px;"><strong>Pre-filled by AI from a call transcript.</strong> Check every rating against the call before submitting — you are the auditor of record.'
+        + ' <button type="button" class="link-btn" data-action="toggle-form-transcript">'+(formState.showTranscript?'Hide':'Show')+' transcript</button></div>';
+      if(formState.showTranscript){
+        out += '<div class="transcript-box" style="margin:0 0 14px;">'+formState.transcript.lines.map(function(l){
+          return '<div>'+(l.speaker?'<strong>'+esc(l.speaker)+':</strong> ':'')+esc(l.text)+'</div>';
+        }).join('')+'</div>';
+      }
+    }
+
     var lastGroup = null;
     PARAMS.forEach(function(p, i){
       if(p.group !== lastGroup){
@@ -467,7 +496,8 @@
       }
       var r = formState.ratings[i];
       out += '<div class="q-row">';
-      out += '<div class="q-text">'+esc(p.question)+'<span class="q-weight">'+p.weight+' pts</span></div>';
+      out += '<div class="q-text">'+esc(p.question)+'<span class="q-weight">'+p.weight+' pts</span>'
+        + (formState.aiManual[i] && !r.rating ? '<span class="ai-flag">AI could not verify — rate manually</span>' : '') + '</div>';
       out += '<div class="seg">'
         + segBtn(i,'Yes',r.rating) + segBtn(i,'No',r.rating)
         + (p.noFatal ? '' : segBtn(i,'Fatal',r.rating))
@@ -1126,6 +1156,291 @@
     return out;
   }
 
+  // ---------- auto audit: links -> transcript -> AI scoring ----------
+
+  async function apiCall(payload){
+    if(!apiConfigured()) return {ok:false, error:'API_URL is not configured.'};
+    try{
+      var res = await fetch(API_URL, {
+        method: 'POST',
+        headers: {'Content-Type': 'text/plain;charset=utf-8'},
+        body: JSON.stringify(payload)
+      });
+      if(!res.ok) throw new Error('HTTP '+res.status);
+      return await res.json();
+    }catch(e){ return {ok:false, error:'Could not reach the server ('+e.message+').'}; }
+  }
+
+  function sleep(ms){ return new Promise(function(r){ setTimeout(r, ms); }); }
+
+  // Re-render only while the Auto Audit tab is open, and never in the middle
+  // of typing (a re-render would drop focus); it catches up on blur instead.
+  function autoRender(){
+    if(activeTab !== 'auto') return;
+    var ae = document.activeElement;
+    if(ae && appEl.contains(ae) && /^(INPUT|TEXTAREA|SELECT)$/.test(ae.tagName)){ autoDirty = true; return; }
+    render();
+  }
+
+  function scorecardForAI(){
+    return PARAMS.map(function(p){
+      return {group:p.group, question:p.question, weight:p.weight, noFatal:!!p.noFatal, zt:!!p.zt, reasons:p.reasons||[]};
+    });
+  }
+
+  function transcriptToText(lines){
+    return lines.map(function(l){ return l.speaker ? (l.speaker+': '+l.text) : l.text; }).join('\n');
+  }
+
+  function autoRowBusy(row){
+    return row.status==='submitting' || row.status==='transcribing' || row.status==='fetching' || row.status==='waiting' || row.status==='analysing';
+  }
+
+  // The server must be running the Auto Audit version of Code.gs. An older
+  // one would not recognise these requests and could save them as blank
+  // audits, so check first (new servers answer ?test=qms with "reachable").
+  async function checkAutoBackend(){
+    if(!apiConfigured()) return {ok:false, error:'API_URL is not configured.'};
+    try{
+      var res = await fetch(API_URL + '?test=qms');
+      var data = await res.json();
+      if(typeof data.reachable === 'undefined') return {ok:false, error:'The server has not been updated for Auto Audit yet — the latest Code.gs needs to be redeployed (see README, "Auto audit setup").'};
+      if(!data.reachable) return {ok:false, error:'The server cannot reach the QMS transcription tool: ' + (data.error || 'unknown error')};
+      return {ok:true};
+    }catch(e){ return {ok:false, error:'Could not reach the server ('+e.message+').'}; }
+  }
+
+  async function startAutoAudit(){
+    var seen = {};
+    var urls = autoAudit.urls.split('\n').map(function(u){ return u.trim(); }).filter(function(u){
+      if(!u || seen[u]) return false;
+      seen[u] = true;
+      return true;
+    });
+    if(!urls.length){ autoAudit.error = 'Paste at least one recording link.'; render(); return; }
+    autoAudit.error = '';
+    autoAudit.checking = true;
+    render();
+    var pre = await checkAutoBackend();
+    autoAudit.checking = false;
+    if(!pre.ok){ autoAudit.error = pre.error; render(); return; }
+    analysisQueue = [];
+    autoAudit.rows = urls.map(function(u){
+      return {url:u, agent:autoAudit.defaultAgent, ticketId:'', status:'submitting', progress:'Sending to transcription…', recordId:null, transcript:null, analysis:null, error:''};
+    });
+    autoAudit.jobId = null;
+    render();
+
+    var r = await apiCall({action:'transcribe_submit', urls:urls, diarize:autoAudit.diarize});
+    if(!r.ok){
+      autoAudit.rows.forEach(function(row){ row.status='error'; row.error = r.error || 'Could not start transcription.'; });
+      autoRender();
+      return;
+    }
+    autoAudit.jobId = r.jobId;
+    pollAutoJob(r.jobId);
+  }
+
+  async function pollAutoJob(jobId){
+    var failures = 0;
+    var started = Date.now();
+    while(autoAudit.jobId === jobId && Date.now() - started < 30*60*1000){
+      var p = await apiCall({action:'transcribe_progress', jobId:jobId});
+      if(autoAudit.jobId !== jobId) return;
+      if(!p.ok){
+        failures++;
+        if(failures >= 5){
+          autoAudit.rows.forEach(function(row){
+            if(row.status==='submitting' || row.status==='transcribing'){ row.status='error'; row.error = p.error || 'Lost contact with the transcription service.'; }
+          });
+          autoRender();
+          return;
+        }
+        await sleep(3000);
+        continue;
+      }
+      failures = 0;
+      p.items.forEach(function(it, idx){
+        var row = autoAudit.rows.filter(function(r){ return r.url === it.url; })[0] || autoAudit.rows[idx];
+        if(!row) return;
+        if(it.status === 'error'){
+          if(row.status==='submitting' || row.status==='transcribing'){ row.status='error'; row.error = it.progress || 'Transcription failed.'; }
+        }else if(it.status === 'done' && it.recordId){
+          if(!row.recordId){
+            row.recordId = it.recordId;
+            row.status = 'fetching';
+            row.progress = 'Fetching transcript…';
+            fetchTranscriptAndQueue(row);
+          }
+        }else if(row.status==='submitting' || row.status==='transcribing'){
+          row.status = 'transcribing';
+          row.progress = it.progress || 'Transcribing…';
+        }
+      });
+      autoRender();
+      if(p.status === 'completed') return;
+      await sleep(3000);
+    }
+  }
+
+  async function fetchTranscriptAndQueue(row){
+    var t = await apiCall({action:'transcribe_result', recordId:row.recordId});
+    if(!t.ok || !t.transcript || !t.transcript.length){
+      row.status = 'error';
+      row.error = t.error || 'The transcription came back empty.';
+      autoRender();
+      return;
+    }
+    row.transcript = t.transcript;
+    enqueueAnalysis(row);
+  }
+
+  function enqueueAnalysis(row){
+    row.status = 'waiting';
+    row.progress = 'Waiting for AI scoring…';
+    row.error = '';
+    analysisQueue.push(row);
+    runAnalysisQueue();
+    autoRender();
+  }
+
+  async function runAnalysisQueue(){
+    if(analysisBusy) return;
+    analysisBusy = true;
+    while(analysisQueue.length){
+      var row = analysisQueue.shift();
+      row.status = 'analysing';
+      row.progress = 'AI is scoring the call…';
+      autoRender();
+      var r = await apiCall({action:'analyze', transcript:transcriptToText(row.transcript), params:scorecardForAI()});
+      if(r.ok && r.analysis){
+        row.analysis = r.analysis;
+        row.status = 'done';
+      }else{
+        row.status = 'error';
+        row.error = r.error || 'AI scoring failed.';
+      }
+      autoRender();
+    }
+    analysisBusy = false;
+  }
+
+  // Ratings as the audit form understands them: "Unverifiable" becomes
+  // unrated so the auditor has to fill it in rather than inherit a guess.
+  function analysisRatings(analysis){
+    return PARAMS.map(function(p, i){
+      var r = analysis.ratings[i];
+      if(!r || r.rating === 'Unverifiable') return {rating:null, reason:'', comment:r ? r.comment : ''};
+      return {rating:r.rating, reason:r.reason||'', comment:r.comment||''};
+    });
+  }
+
+  function openAutoInForm(idx){
+    var row = autoAudit.rows[idx];
+    if(!row || !row.analysis) return;
+    var a = row.analysis;
+    var ratings = analysisRatings(a);
+    formState = freshFormState();
+    formState.meta.agent = row.agent;
+    formState.meta.ticketId = row.ticketId;
+    formState.meta.summary = a.summary;
+    formState.meta.improvement = a.improvement;
+    formState.meta.fatalFeedback = a.fatalFeedback;
+    formState.meta.acpt = a.acpt;
+    formState.ratings = ratings.map(function(r){ return {rating:r.rating, reason:r.reason, comment:r.comment}; });
+    ratings.forEach(function(r, i){ if(r.rating === null) formState.aiManual[i] = true; });
+    formState.transcript = {url:row.url, lines:row.transcript};
+    activeTab = 'submit';
+    render();
+    window.scrollTo(0, 0);
+  }
+
+  function autoStatusBadge(row){
+    if(row.status === 'done') return '<span class="status-badge status-pass">Scored</span>';
+    if(row.status === 'error') return '<span class="status-badge status-fail">Failed</span>';
+    return '<span class="status-badge status-mid">'+esc(row.progress || 'Working…')+'</span>';
+  }
+
+  function renderAutoRow(row, idx){
+    var out = '<div class="auto-row">';
+    out += '<div class="auto-row-head"><div class="auto-row-url">'+esc(row.url.length>90 ? row.url.slice(0,87)+'…' : row.url)+'</div>'+autoStatusBadge(row)+'</div>';
+
+    out += '<div class="auto-row-meta">';
+    out += field('Agent', '<select data-field="auto-row-agent" data-idx="'+idx+'"><option value="">Select agent…</option>'
+      + AGENTS.map(function(a){ return '<option value="'+esc(a)+'"'+(row.agent===a?' selected':'')+'>'+esc(a)+'</option>'; }).join('')
+      + '</select>');
+    out += field('Ticket / Call ID', '<input type="text" data-field="auto-row-ticket" data-idx="'+idx+'" value="'+esc(row.ticketId)+'" placeholder="Optional">');
+    out += '</div>';
+
+    if(row.status === 'error'){
+      out += '<div class="banner banner-error" style="margin:0 0 10px;">'+esc(row.error)+'</div>';
+      if(row.transcript) out += '<button type="button" class="pill-btn" data-action="auto-retry" data-idx="'+idx+'">Retry AI scoring</button>';
+    }
+
+    if(row.analysis){
+      var ratings = analysisRatings(row.analysis);
+      var res = computeScore(ratings);
+      var counts = {Yes:0, No:0, Fatal:0, NA:0, manual:0};
+      ratings.forEach(function(r){ if(r.rating===null) counts.manual++; else counts[r.rating]++; });
+      var st = res.fatal ? {label:'Fatal', cls:'status-fatal'} : (res.score>=PASS_THRESHOLD ? {label:'Pass', cls:'status-pass'} : (res.score>=MID_THRESHOLD ? {label:'Needs Improvement', cls:'status-mid'} : {label:'Fail', cls:'status-fail'}));
+      out += '<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">'
+        + '<span class="mono" style="font-size:22px;font-weight:600;">'+res.score+'<span style="font-size:13px;color:var(--text-muted);">/100</span></span>'
+        + '<span class="status-badge '+st.cls+'">'+st.label+'</span>'
+        + (counts.manual ? '<span class="ai-flag" style="margin:0;">'+counts.manual+' parameter(s) need your manual check — not counted in this score</span>' : '')
+        + '</div>';
+      out += '<div class="auto-chips"><span class="auto-chip">Yes '+counts.Yes+'</span><span class="auto-chip">No '+counts.No+'</span><span class="auto-chip">Fatal '+counts.Fatal+'</span><span class="auto-chip">N/A '+counts.NA+'</span>'
+        + (row.analysis.acpt ? '<span class="auto-chip">ACPT: '+esc(row.analysis.acpt)+'</span>' : '') + '</div>';
+      if(row.analysis.summary) out += '<div class="auto-result"><strong>Summary:</strong> '+esc(row.analysis.summary)+'</div>';
+      var flagged = [];
+      ratings.forEach(function(r, i){
+        if(r.rating==='No' || r.rating==='Fatal') flagged.push('<li><strong>['+r.rating+']</strong> '+esc(PARAMS[i].question)+(r.reason?' — '+esc(r.reason):'')+(r.comment?' <span style="color:var(--text-muted);">('+esc(r.comment)+')</span>':'')+'</li>');
+      });
+      if(flagged.length) out += '<div class="auto-result"><strong>Flagged:</strong><ul style="margin:4px 0 0 18px;padding:0;">'+flagged.join('')+'</ul></div>';
+      out += '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px;">'
+        + '<button type="button" class="btn btn-primary" data-action="auto-open" data-idx="'+idx+'">Review &amp; submit as audit</button>'
+        + '<button type="button" class="pill-btn" data-action="auto-toggle-transcript" data-idx="'+idx+'">'+(autoAudit.openTranscripts[idx]?'Hide':'Show')+' transcript</button>'
+        + '</div>';
+    }else if(row.transcript){
+      out += '<button type="button" class="pill-btn" data-action="auto-toggle-transcript" data-idx="'+idx+'">'+(autoAudit.openTranscripts[idx]?'Hide':'Show')+' transcript</button>';
+    }
+
+    if(row.transcript && autoAudit.openTranscripts[idx]){
+      out += '<div class="transcript-box">'+row.transcript.map(function(l){
+        return '<div>'+(l.speaker?'<strong>'+esc(l.speaker)+':</strong> ':'')+esc(l.text)+'</div>';
+      }).join('')+'</div>';
+    }
+    out += '</div>';
+    return out;
+  }
+
+  function renderAutoAuditTab(){
+    var busy = autoAudit.checking || autoAudit.rows.some(autoRowBusy);
+    var out = '<div class="card" style="padding:20px;margin-bottom:20px;">';
+    out += '<h2 class="section-title">Auto audit</h2>';
+    out += '<p class="section-sub">Paste call recording links, one per line. Each call is transcribed, then scored by AI against the scorecard. Review the result and submit it as a normal audit under your name.</p>';
+
+    out += '<div class="field" style="margin-bottom:14px;"><label>Recording links</label>'
+      + '<textarea data-field="auto-urls" rows="5" placeholder="One recording link per line">'+esc(autoAudit.urls)+'</textarea></div>';
+
+    out += '<div class="meta-grid" style="grid-template-columns:1fr 1fr;">';
+    out += field('Transcript style', '<select data-field="auto-diarize"><option value="diarized"'+(autoAudit.diarize?' selected':'')+'>Speaker separated (agent / customer)</option><option value="plain"'+(autoAudit.diarize?'':' selected')+'>Plain text</option></select>');
+    out += field('Agent for these calls (can change per call)', '<select data-field="auto-default-agent"><option value="">Select agent…</option>'
+      + AGENTS.map(function(a){ return '<option value="'+esc(a)+'"'+(autoAudit.defaultAgent===a?' selected':'')+'>'+esc(a)+'</option>'; }).join('')
+      + '</select>');
+    out += '</div>';
+
+    if(autoAudit.error) out += '<div class="banner banner-error">'+esc(autoAudit.error)+'</div>';
+
+    out += '<div class="actions" style="margin-top:0;margin-bottom:18px;">'
+      + '<button type="button" class="btn btn-primary" data-action="auto-start"'+(busy?' disabled':'')+'>'+(busy?'Working…':'Transcribe &amp; score')+'</button>'
+      + (autoAudit.rows.length ? '<button type="button" class="btn btn-ghost" data-action="auto-clear">Clear</button>' : '')
+      + '</div>';
+
+    autoAudit.rows.forEach(function(row, idx){ out += renderAutoRow(row, idx); });
+    out += '</div>';
+    return out;
+  }
+
   function renderAuditsTable(list){
     var out = '<div class="card" id="audit-log-anchor" style="padding:20px;scroll-margin-top:88px;">';
     out += '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:14px;flex-wrap:wrap;">';
@@ -1301,12 +1616,23 @@
       render();
     }
     else if(action==='report-copy'){ copyToClipboard('Weekly report', buildWeeklyReportText()); }
+    else if(action==='auto-start'){ startAutoAudit(); }
+    else if(action==='auto-clear'){ autoAudit.jobId = null; autoAudit.rows = []; autoAudit.error = ''; autoAudit.openTranscripts = {}; analysisQueue = []; render(); }
+    else if(action==='auto-open'){ openAutoInForm(parseInt(actionEl.getAttribute('data-idx'),10)); }
+    else if(action==='auto-retry'){ var rr = autoAudit.rows[parseInt(actionEl.getAttribute('data-idx'),10)]; if(rr && rr.transcript){ enqueueAnalysis(rr); } }
+    else if(action==='auto-toggle-transcript'){ var ti = actionEl.getAttribute('data-idx'); autoAudit.openTranscripts[ti] = !autoAudit.openTranscripts[ti]; render(); }
+    else if(action==='toggle-form-transcript'){ formState.showTranscript = !formState.showTranscript; render(); }
     else if(action==='notify-slack'){
       var nid = actionEl.getAttribute('data-id');
       notifySlackRemote(nid).then(function(ok){
         toast(ok ? 'Sent to Slack.' : 'Could not send to Slack — check the webhook is set up.');
       });
     }
+  });
+
+  // Catch up on any Auto Audit updates that were held back while typing.
+  appEl.addEventListener('focusout', function(){
+    if(autoDirty){ autoDirty = false; setTimeout(autoRender, 0); }
   });
 
   appEl.addEventListener('input', function(e){
@@ -1317,7 +1643,9 @@
       formState.ratings[idx][field] = e.target.value;
     }else if(field==='ticketId' || field==='ticketCategory' || field==='summary' || field==='improvement' || field==='fatalFeedback'){
       formState.meta[field] = e.target.value;
-    }else if(field==='report-process'){ weeklyReport.process = e.target.value; }
+    }else if(field==='auto-urls'){ autoAudit.urls = e.target.value; }
+    else if(field==='auto-row-ticket'){ var tr = autoAudit.rows[parseInt(e.target.getAttribute('data-idx'),10)]; if(tr) tr.ticketId = e.target.value; }
+    else if(field==='report-process'){ weeklyReport.process = e.target.value; }
     else if(field==='report-aoi'){ weeklyReport.aoi = e.target.value; autosizeTextarea(e.target); }
     else if(field==='report-gaps'){ weeklyReport.processGaps = e.target.value; autosizeTextarea(e.target); }
   });
@@ -1340,6 +1668,9 @@
     if(field==='filter-to'){ filters.to = e.target.value; render(); return; }
     if(field==='filter-auditor'){ filters.auditor = e.target.value; render(); return; }
     if(field==='filter-agent'){ filters.agent = e.target.value; render(); return; }
+    if(field==='auto-diarize'){ autoAudit.diarize = (e.target.value === 'diarized'); return; }
+    if(field==='auto-default-agent'){ autoAudit.defaultAgent = e.target.value; return; }
+    if(field==='auto-row-agent'){ var ar = autoAudit.rows[parseInt(e.target.getAttribute('data-idx'),10)]; if(ar) ar.agent = e.target.value; return; }
     if(field==='report-from'){ weeklyReport.from = e.target.value; render(); return; }
     if(field==='report-to'){ weeklyReport.to = e.target.value; render(); return; }
   });
