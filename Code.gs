@@ -320,12 +320,14 @@ function buildAuditTool(){
     description: 'Submit the finished audit of one call against the scorecard.',
     input_schema: {
       type: 'object',
+      additionalProperties: false,
       properties: {
         ratings: {
           type: 'array',
           description: 'Exactly one entry per scorecard parameter, using the parameter index shown in the scorecard.',
           items: {
             type: 'object',
+            additionalProperties: false,
             properties: {
               index: {type: 'integer'},
               rating: {type: 'string', enum: ['Yes', 'No', 'Fatal', 'NA', 'Unverifiable']},
@@ -417,16 +419,26 @@ function callClaude(system, userText, tool){
   if (!key) return {ok:false, error:'ANTHROPIC_API_KEY script property is not set.'};
   var model = props.getProperty('CLAUDE_MODEL') || AI_MODEL_DEFAULT;
 
+  // max_tokens is generous because current models reason before answering
+  // and that thinking counts against it.
   var payload = {
     model: model,
-    max_tokens: 4096,
+    max_tokens: 16000,
     system: system,
     messages: [{role: 'user', content: userText}]
   };
+  var outputConfig = {};
   if (tool) {
-    payload.tools = [tool];
-    payload.tool_choice = {type: 'tool', name: tool.name};
+    // Current models reject a forced tool call, so the audit comes back as
+    // schema-constrained JSON in the reply instead.
+    outputConfig.format = {type: 'json_schema', schema: tool.input_schema};
   }
+  // "effort" (how hard the model thinks) only exists on the newer models;
+  // older ones such as Haiku 4.5 reject it. CLAUDE_EFFORT overrides the default.
+  var effort = props.getProperty('CLAUDE_EFFORT');
+  if (!effort && /sonnet-5|opus-5|opus-4-[678]|fable|mythos/.test(model)) effort = 'medium';
+  if (effort) outputConfig.effort = effort;
+  if (outputConfig.format || outputConfig.effort) payload.output_config = outputConfig;
 
   var resp = UrlFetchApp.fetch('https://api.anthropic.com/v1/messages', {
     method: 'post',
@@ -526,9 +538,13 @@ function runAuditModel(system, userText, tool){
   }
   var c = callClaude(system, userText, tool);
   if (!c.ok) return c;
-  var block = (c.json.content || []).filter(function(b){ return b.type === 'tool_use'; })[0];
-  if (!block || !block.input) return {ok:false, error:'AI did not return a scored audit. Try again.'};
-  return {ok:true, input: block.input, model: c.model};
+  if (c.json.stop_reason === 'refusal') return {ok:false, error:'The AI declined to score this call. Try again, or open it in the audit form and rate it yourself.'};
+  if (c.json.stop_reason === 'max_tokens') return {ok:false, error:'The AI ran out of room before finishing. Try again.'};
+  var text = (c.json.content || []).filter(function(b){ return b.type === 'text'; }).map(function(b){ return b.text; }).join('');
+  var parsed = null;
+  try { parsed = JSON.parse(text); } catch (err) {}
+  if (!parsed || typeof parsed !== 'object') return {ok:false, error:'AI did not return a readable audit. Try again.'};
+  return {ok:true, input: parsed, model: c.model};
 }
 
 function analyzeTranscript(body){
