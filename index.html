@@ -106,6 +106,8 @@
 '.wr-note-label{font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:var(--text-muted);margin-bottom:6px;}',
 '.wr-textarea{display:block;width:100%;border:none;background:transparent;padding:0;resize:none;overflow:hidden;font-family:inherit;font-size:13.5px;color:var(--text);line-height:1.55;min-height:60px;}',
 '.wr-textarea:focus{outline:1px dashed var(--accent);outline-offset:6px;}',
+'.stat-grid.five{grid-template-columns:repeat(5,1fr);}',
+'@media (max-width:820px){.stat-grid.five{grid-template-columns:1fr 1fr;}}',
 '.auto-row{border:1px solid var(--border);border-radius:12px;padding:14px 16px;margin-bottom:12px;background:var(--surface);}',
 '.auto-row-head{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:10px;}',
 '.auto-row-url{font-size:12.5px;word-break:break-all;color:var(--text-muted);}',
@@ -224,10 +226,12 @@
     {group:'Soft Skills', question:'Hold/Mute Protocol', weight:8, reasons:[
       'Hold permission not taken','Initial hold time not communicated','Hold refresh not provided within 1 minute','Second hold time not communicated','Thank you after hold not provided','Apology for extended hold not provided','Dead air observed','Extended hold observed','Periodic hold updates not provided','Hold protocol not followed'
     ]},
-    {group:'Soft Skills', question:'Reassurance/Empathy', weight:8, reasons:[
+    {group:'Soft Skills', question:'Reassurance/Empathy', weight:8,
+      aiHint:'Be lenient. Yes if the agent acknowledged the problem, apologised, or reassured the customer in any reasonable way, even briefly or in simple words. Mark No only if the customer was clearly upset or in difficulty and the agent showed no acknowledgement at all, or was dismissive.', reasons:[
       'Empathy not demonstrated','Reassurance not provided','Apology not offered where applicable','Ineffective Empathy or Apology','Over Empathise/Sympathise'
     ]},
-    {group:'Resolution & Process Adherence', question:'Accurate and Complete resolution provided', weight:10, reasons:[
+    {group:'Resolution & Process Adherence', question:'Accurate and Complete resolution provided', weight:10,
+      aiHint:'Be lenient. You cannot see the company systems, so give the benefit of the doubt: Yes unless the call clearly shows wrong information, a customer question left unanswered, or a promise the agent could not keep. Never mark No just because you cannot confirm the answer was correct.', reasons:[
       'Incorrect information shared','Incomplete information shared','Partially query addressed','Irrelevant information shared','Did not correct customer\'s understanding','System information not checked','Did false commitment'
     ]},
     {group:'Resolution & Process Adherence', question:'SOP Followed: Were document/link requests and refund steps handled as per SOP', weight:10, aiSkip:true},
@@ -254,7 +258,11 @@
   // ACPT = overall root-cause bucket for the audit: Agent / Customer / Process / Technology.
   var ACPT_OPTIONS = ['Agent', 'Customer', 'Process', 'Technology'];
 
-  var state = {audits: []};
+  // audits = human-audited calls (the main Dashboard and reports);
+  // aiAudits = calls scored through Auto Audit (the AI Dashboard).
+  var state = {audits: [], aiAudits: []};
+  var aiFilters = {from:'', to:'', agent:'All'};
+  function isAiAudit(a){ return a.source === 'ai' || a.source === 'ai-reviewed'; }
   var syncStatus = 'loading'; // loading | synced | error | unconfigured
   var activeTab = 'submit';
   var expanded = {};
@@ -363,7 +371,9 @@
       var res = await fetch(API_URL, {method:'GET'});
       if(!res.ok) throw new Error('bad status');
       var data = await res.json();
-      state.audits = Array.isArray(data.audits) ? data.audits : [];
+      var allAudits = Array.isArray(data.audits) ? data.audits : [];
+      state.audits = allAudits.filter(function(a){ return !isAiAudit(a); });
+      state.aiAudits = allAudits.filter(isAiAudit);
       syncStatus = 'synced';
     }catch(e){
       syncStatus = 'error';
@@ -416,7 +426,7 @@
   function render(){
     var html = renderHeader() + '<div class="wrap">'
       + renderSetupBanner()
-      + (activeTab==='submit' ? renderSubmitTab() : (activeTab==='auto' ? renderAutoAuditTab() : (activeTab==='report' ? renderWeeklyReportTab() : renderDashboardTab())))
+      + (activeTab==='submit' ? renderSubmitTab() : (activeTab==='auto' ? renderAutoAuditTab() : (activeTab==='aidash' ? renderAiDashboardTab() : (activeTab==='report' ? renderWeeklyReportTab() : renderDashboardTab()))))
       + '</div>'
       + (toastMsg ? '<div class="toast">'+esc(toastMsg)+'</div>' : '');
     appEl.innerHTML = html;
@@ -455,6 +465,7 @@
       + '<div class="tabs">'
       + '<button type="button" class="tab-btn'+(activeTab==='submit'?' active':'')+'" data-action="tab" data-tab="submit">Submit Audit</button>'
       + '<button type="button" class="tab-btn'+(activeTab==='auto'?' active':'')+'" data-action="tab" data-tab="auto">Auto Audit</button>'
+      + '<button type="button" class="tab-btn'+(activeTab==='aidash'?' active':'')+'" data-action="tab" data-tab="aidash">AI Dashboard</button>'
       + '<button type="button" class="tab-btn'+(activeTab==='dashboard'?' active':'')+'" data-action="tab" data-tab="dashboard">Dashboard</button>'
       + '<button type="button" class="tab-btn'+(activeTab==='report'?' active':'')+'" data-action="tab" data-tab="report">Weekly Report</button>'
       + '</div></div></div></div>';
@@ -1192,7 +1203,7 @@
 
   function scorecardForAI(){
     return PARAMS.map(function(p){
-      return {group:p.group, question:p.question, weight:p.weight, noFatal:!!p.noFatal, zt:!!p.zt, reasons:p.reasons||[], skip:!!p.aiSkip};
+      return {group:p.group, question:p.question, weight:p.weight, noFatal:!!p.noFatal, zt:!!p.zt, reasons:p.reasons||[], skip:!!p.aiSkip, hint:p.aiHint||''};
     });
   }
 
@@ -1441,6 +1452,7 @@
       var a = row.analysis;
       var audit = {
         id: uid(),
+        source: 'ai',
         date: b.date,
         auditDate: b.auditDate,
         auditor: b.auditor,
@@ -1462,7 +1474,7 @@
       var result = await saveAuditRemote(audit);
       if(result && result.ok){
         row.submitted = true;
-        state.audits = state.audits.concat([audit]);
+        state.aiAudits = state.aiAudits.concat([audit]);
         saved++;
         if(result.slack === false) slackFailed++;
       }else{
@@ -1523,9 +1535,14 @@
       if(row.analysis.summary) out += '<div class="auto-result"><strong>Summary:</strong> '+esc(row.analysis.summary)+'</div>';
       var flagged = [];
       ratings.forEach(function(r, i){
-        if(r.rating==='No' || r.rating==='Fatal') flagged.push('<li><strong>['+r.rating+']</strong> '+esc(PARAMS[i].question)+(r.reason?' — '+esc(r.reason):'')+(r.comment?' <span style="color:var(--text-muted);">('+esc(r.comment)+')</span>':'')+'</li>');
+        if(r.rating==='No' || r.rating==='Fatal') flagged.push('<li><strong>['+r.rating+']</strong> '+esc(PARAMS[i].question)+(PARAMS[i].weight?' <span class="mono">0/'+PARAMS[i].weight+' pts</span>':'')+(r.reason?' — '+esc(r.reason):'')+(r.comment?' <span style="color:var(--text-muted);">('+esc(r.comment)+')</span>':'')+'</li>');
       });
       if(flagged.length) out += '<div class="auto-result"><strong>Flagged:</strong><ul style="margin:4px 0 0 18px;padding:0;">'+flagged.join('')+'</ul></div>';
+      var wentWell = [];
+      ratings.forEach(function(r, i){
+        if(r.rating==='Yes') wentWell.push('<li><strong>'+esc(PARAMS[i].question)+'</strong>'+(PARAMS[i].weight?' <span class="mono">'+PARAMS[i].weight+'/'+PARAMS[i].weight+' pts</span>':'')+(r.comment?' <span style="color:var(--text-muted);">— '+esc(r.comment)+'</span>':'')+'</li>');
+      });
+      if(wentWell.length) out += '<div class="auto-result"><strong>Went well:</strong><ul style="margin:4px 0 0 18px;padding:0;">'+wentWell.join('')+'</ul></div>';
 
       if(!row.submitted){
         var problems = autoRowProblems(row);
@@ -1597,6 +1614,154 @@
     out += renderBulkBar();
     autoAudit.rows.forEach(function(row, idx){ out += renderAutoRow(row, idx); });
     out += '</div>';
+    return out;
+  }
+
+  // ---------- AI dashboard (calls scored through Auto Audit) ----------
+
+  function aiFilteredAudits(){
+    return state.aiAudits.filter(function(a){
+      if(aiFilters.from && a.date < aiFilters.from) return false;
+      if(aiFilters.to && a.date > aiFilters.to) return false;
+      if(aiFilters.agent !== 'All' && a.agent !== aiFilters.agent) return false;
+      return true;
+    }).sort(function(a,b){
+      if(a.date !== b.date) return a.date < b.date ? 1 : -1;
+      return (a.submittedAt < b.submittedAt) ? 1 : -1;
+    });
+  }
+
+  function auditCsat(a){
+    var r = (CSAT_INDEX >= 0 && a.ratings) ? a.ratings[CSAT_INDEX] : null;
+    return (r && r.rating) ? r.rating : null;
+  }
+
+  // Share of calls where the customer was asked to rate, among calls where
+  // that could be judged (Yes or No).
+  function csatRate(list){
+    var yes = 0, no = 0;
+    list.forEach(function(a){
+      var c = auditCsat(a);
+      if(c === 'Yes') yes++; else if(c === 'No') no++;
+    });
+    return (yes + no) ? {pct:Math.round(yes/(yes+no)*100), yes:yes, total:yes+no} : null;
+  }
+
+  function avgOf(list){
+    return list.length ? Math.round(list.reduce(function(s,a){ return s + a.score; }, 0) / list.length) : 0;
+  }
+
+  function plainTile(label, value, hint){
+    return '<div class="card stat-tile"><div class="stat-label">'+esc(label)+'</div><div class="stat-value mono">'+esc(value)+'</div>'
+      + (hint ? '<div class="stat-hint" style="opacity:1;color:var(--text-muted);">'+esc(hint)+'</div>' : '') + '</div>';
+  }
+
+  function scoreCls(v){ return v >= PASS_THRESHOLD ? 'cell-good' : (v >= MID_THRESHOLD ? 'cell-mid' : 'cell-bad'); }
+
+  function aiAgentFilterSelect(){
+    var seen = {};
+    state.aiAudits.forEach(function(a){ seen[a.agent] = true; });
+    var out = '<select data-field="ai-filter-agent"><option value="All"'+(aiFilters.agent==='All'?' selected':'')+'>All agents</option>';
+    Object.keys(seen).sort().forEach(function(ag){
+      out += '<option value="'+esc(ag)+'"'+(aiFilters.agent===ag?' selected':'')+'>'+esc(ag)+'</option>';
+    });
+    return out + '</select>';
+  }
+
+  function renderAiAgentTable(list){
+    var byAgent = {};
+    list.forEach(function(a){ (byAgent[a.agent] = byAgent[a.agent] || []).push(a); });
+    var rows = Object.keys(byAgent).map(function(ag){
+      var arr = byAgent[ag];
+      return {agent:ag, count:arr.length, avg:avgOf(arr), fatal:arr.filter(function(a){ return a.fatal; }).length, csat:csatRate(arr)};
+    }).sort(function(a,b){ return b.avg - a.avg; });
+    var out = '<div class="card" style="padding:20px;margin-bottom:20px;"><h2 class="section-title">Agent-wise (AI audits)</h2>';
+    out += '<p class="section-sub">Average AI score and how often the customer was asked to rate the call, by agent.</p>';
+    out += '<div class="table-wrap"><table class="audits"><thead><tr><th>Agent</th><th>Audits</th><th>Average score</th><th>Fatal</th><th>CSAT pitched</th></tr></thead><tbody>';
+    rows.forEach(function(r){
+      out += '<tr><td><strong>'+esc(r.agent)+'</strong></td><td class="mono">'+r.count+'</td><td class="mono '+scoreCls(r.avg)+'">'+r.avg+'/100</td><td class="mono">'+r.fatal+'</td>'
+        + '<td class="mono">'+(r.csat ? r.csat.pct+'% ('+r.csat.yes+'/'+r.csat.total+')' : '—')+'</td></tr>';
+    });
+    return out + '</tbody></table></div></div>';
+  }
+
+  // Every parameter: how often it passed and failed in AI audits - the
+  // "what goes well" side as well as the defects.
+  function renderAiParamTable(list){
+    var out = '<div class="card" style="padding:20px;margin-bottom:20px;"><h2 class="section-title">Parameter-wise (AI audits)</h2>';
+    out += '<p class="section-sub">How each parameter did across these calls. Pass % counts Yes and N/A; parameters the AI cannot judge from a recording show as not assessed.</p>';
+    out += '<div class="table-wrap"><table class="audits"><thead><tr><th>Parameter</th><th>Points</th><th>Assessed</th><th>Yes</th><th>No / Fatal</th><th>N/A</th><th>Pass %</th></tr></thead><tbody>';
+    PARAMS.forEach(function(p, i){
+      var yes = 0, bad = 0, na = 0;
+      list.forEach(function(a){
+        var r = a.ratings && a.ratings[i];
+        if(!r || !r.rating) return;
+        if(r.rating === 'Yes') yes++; else if(r.rating === 'NA') na++; else bad++;
+      });
+      var assessed = yes + bad + na;
+      var pass = assessed ? Math.round((yes + na) / assessed * 100) : null;
+      out += '<tr><td><strong>'+esc(p.question)+'</strong><div style="color:var(--text-muted);font-size:11.5px;">'+esc(p.group)+'</div></td>'
+        + '<td class="mono">'+p.weight+'</td>'
+        + (assessed
+          ? '<td class="mono">'+assessed+'</td><td class="mono">'+yes+'</td><td class="mono">'+bad+'</td><td class="mono">'+na+'</td><td class="mono '+scoreCls(pass)+'">'+pass+'%</td>'
+          : '<td colspan="5" style="color:var(--text-muted);font-size:12.5px;">Not assessed by AI</td>')
+        + '</tr>';
+    });
+    return out + '</tbody></table></div></div>';
+  }
+
+  function renderAiAuditLog(list){
+    var out = '<div class="card" style="padding:20px;"><h2 class="section-title">AI audit log</h2>';
+    out += '<p class="section-sub" style="margin-bottom:0;">'+list.length+' AI audit(s) match the filters.</p>';
+    out += '<div class="table-wrap" style="margin-top:14px;"><table class="audits"><thead><tr><th>PFT Action Date</th><th>Agent</th><th>Score</th><th>Status</th><th>CSAT pitched</th><th>Checked by</th><th></th><th></th></tr></thead><tbody>';
+    list.forEach(function(a){
+      var st = statusOf(a);
+      var c = auditCsat(a);
+      out += '<tr><td class="mono">'+esc(a.date)+'</td><td>'+esc(a.agent)+'</td><td class="mono">'+a.score+'/100</td>'
+        + '<td><span class="status-badge '+st.cls+'">'+st.label+'</span></td>'
+        + '<td>'+(c==='Yes' ? 'Yes' : (c==='No' ? 'No' : (c==='NA' ? 'N/A' : '—')))+'</td>'
+        + '<td>'+(a.source==='ai-reviewed' ? esc(a.auditor)+' (reviewed)' : esc(a.auditor)+' (saved as is)')+'</td>'
+        + '<td><button type="button" class="link-btn" data-action="toggle-expand" data-id="'+a.id+'">'+(expanded[a.id]?'Hide':'Details')+'</button></td>'
+        + '<td><button type="button" class="link-btn danger" data-action="delete-audit" data-id="'+a.id+'">Delete</button></td></tr>';
+      if(expanded[a.id]) out += '<tr class="detail-row"><td colspan="8">'+renderAuditDetail(a)+'</td></tr>';
+    });
+    return out + '</tbody></table></div></div>';
+  }
+
+  function renderAiDashboardTab(){
+    var out = '<div class="card filters">';
+    out += filterField('From', '<input type="date" data-field="ai-filter-from" value="'+esc(aiFilters.from)+'">');
+    out += filterField('To', '<input type="date" data-field="ai-filter-to" value="'+esc(aiFilters.to)+'">');
+    out += filterField('Agent', aiAgentFilterSelect());
+    out += '<button type="button" class="pill-btn" data-action="ai-clear-filters">Clear filters</button>';
+    out += '<button type="button" class="pill-btn" data-action="refresh-data">Refresh</button>';
+    out += '</div>';
+
+    if(!state.aiAudits.length){
+      out += '<div class="card empty-state"><h2 class="section-title">No AI audits yet</h2><p class="section-sub">Score some calls in the Auto Audit tab and save them — they will appear here, separate from the main Dashboard.</p></div>';
+      return out;
+    }
+    var list = aiFilteredAudits();
+    if(!list.length){
+      out += '<div class="card empty-state"><h2 class="section-title">No AI audits match these filters</h2></div>';
+      return out;
+    }
+
+    var pass = list.filter(function(a){ return !a.fatal && a.score >= PASS_THRESHOLD; }).length;
+    var csat = csatRate(list);
+    out += '<p class="section-sub" style="margin:0 0 12px;">These are calls scored by AI, kept apart from the main Dashboard. An AI audit is scored only on what a call recording can show, so its score is not directly comparable with a fully manual audit.</p>';
+    out += '<div class="stat-grid five">'
+      + plainTile('AI audits', list.length)
+      + plainTile('Average score', avgOf(list)+'/100')
+      + plainTile('Pass rate', Math.round(pass/list.length*100)+'%', 'score ≥ '+PASS_THRESHOLD+' and no fatal')
+      + plainTile('CSAT pitched', csat ? csat.pct+'%' : '—', csat ? csat.yes+' of '+csat.total+' calls' : 'no calls to judge')
+      + plainTile('Fatal audits', list.filter(function(a){ return a.fatal; }).length)
+      + '</div>';
+    out += renderAiAgentTable(list);
+    out += renderAiParamTable(list);
+    out += renderDefectParetoReport(list);
+    out += renderACPTSummary(list);
+    out += renderAiAuditLog(list);
     return out;
   }
 
@@ -1676,8 +1841,11 @@
       return;
     }
     var res = computeScore(formState.ratings);
+    // Opened from Auto Audit = AI drafted it, a person reviewed every rating.
+    var fromRow = formState.autoRow;
     var audit = {
       id: uid(),
+      source: fromRow ? 'ai-reviewed' : '',
       date: formState.meta.date,
       auditDate: formState.meta.auditDate,
       auditor: formState.meta.auditor.trim(),
@@ -1695,10 +1863,10 @@
       acpt: formState.meta.acpt || '',
       submittedAt: new Date().toISOString()
     };
-    state.audits = state.audits.concat([audit]);
+    if(fromRow) state.aiAudits = state.aiAudits.concat([audit]);
+    else state.audits = state.audits.concat([audit]);
     // If this form was opened from the Auto Audit tab, mark that call done and
     // go back to the rest of the batch instead of the dashboard.
-    var fromRow = formState.autoRow;
     var rowStillListed = fromRow && autoAudit.rows.indexOf(fromRow) !== -1;
     if(rowStillListed) fromRow.submitted = true;
     formState = freshFormState();
@@ -1761,6 +1929,7 @@
         deleteAuditRemote(delId).then(function(ok){
           if(ok){
             state.audits = state.audits.filter(function(a){ return a.id !== delId; });
+            state.aiAudits = state.aiAudits.filter(function(a){ return a.id !== delId; });
             toast('Audit deleted.');
           }else{
             toast('Could not delete — check your connection and try again.');
@@ -1787,6 +1956,7 @@
     else if(action==='auto-toggle-transcript'){ var ti = actionEl.getAttribute('data-idx'); autoAudit.openTranscripts[ti] = !autoAudit.openTranscripts[ti]; render(); }
     else if(action==='toggle-form-transcript'){ formState.showTranscript = !formState.showTranscript; render(); }
     else if(action==='auto-submit-batch'){ submitAutoBatch(); }
+    else if(action==='ai-clear-filters'){ aiFilters = {from:'', to:'', agent:'All'}; render(); }
     else if(action==='notify-slack'){
       var nid = actionEl.getAttribute('data-id');
       notifySlackRemote(nid).then(function(ok){
@@ -1833,6 +2003,9 @@
     if(field==='filter-to'){ filters.to = e.target.value; render(); return; }
     if(field==='filter-auditor'){ filters.auditor = e.target.value; render(); return; }
     if(field==='filter-agent'){ filters.agent = e.target.value; render(); return; }
+    if(field==='ai-filter-from'){ aiFilters.from = e.target.value; render(); return; }
+    if(field==='ai-filter-to'){ aiFilters.to = e.target.value; render(); return; }
+    if(field==='ai-filter-agent'){ aiFilters.agent = e.target.value; render(); return; }
     if(field==='auto-diarize'){ autoAudit.diarize = (e.target.value === 'diarized'); return; }
     if(field==='auto-default-agent'){ autoAudit.defaultAgent = e.target.value; return; }
     if(field==='auto-row-agent'){ var ar = autoAudit.rows[parseInt(e.target.getAttribute('data-idx'),10)]; if(ar){ ar.agent = e.target.value; render(); } return; }
@@ -1846,7 +2019,7 @@
 
   render();
   loadAudits();
-  setInterval(function(){ if(activeTab==='dashboard'){ loadAudits(); } }, 20000);
+  setInterval(function(){ if(activeTab==='dashboard' || activeTab==='aidash'){ loadAudits(); } }, 20000);
 })();
 </script>
 </body>

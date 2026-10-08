@@ -15,7 +15,7 @@
  */
 
 var HEADERS = ['id','date','auditDate','auditor','agent','ticketId','score','fatal',
-  'summary','improvement','fatalFeedback','submittedAt','ratings','acpt','ticketCategory'];
+  'summary','improvement','fatalFeedback','submittedAt','ratings','acpt','ticketCategory','source'];
 
 var PASS_THRESHOLD = 85;
 var MID_THRESHOLD = 70;
@@ -352,6 +352,7 @@ function buildAuditSystemPrompt(params){
     if (p.skip) return '';   // parameters the AI must not judge are not shown to it
     var s = i + ' | ' + p.group + ' | ' + p.question + ' (' + p.weight + ' pts)';
     if (p.noFatal) s += ' | Fatal NOT allowed';
+    if (p.hint) s += '\n    guidance for this parameter (takes priority over the general rules): ' + p.hint;
     if (p.zt) s += ' | ZTP row: Yes = no violation, No = violation by the agent';
     if (p.reasons && p.reasons.length) s += '\n    reason must be exactly one of: ' + p.reasons.join(' ; ');
     else s += '\n    reason: a short free-text phrase';
@@ -370,7 +371,8 @@ function buildAuditSystemPrompt(params){
     '- Yes: clearly met in the call. No: not met, or only partly met. NA: genuinely not applicable to this call (for example no hold took place, or the customer never engaged).',
     '- Fatal: only for a severe breach of that parameter (abusive or rude behaviour, a false commitment, seriously wrong information that harms the customer). Never use Fatal where the parameter says Fatal NOT allowed. When unsure between No and Fatal, choose No.',
     '- Unverifiable: use this when the parameter depends on information that is not in the call audio, such as CRM or Kapture notes, ticket dispositions, status updates, or whether the agent really checked a system. Do not guess these.',
-    '- Be strict and consistent. Judge only what is in the transcript. If a transcript is too short or garbled to judge, rate Unverifiable and say so in the summary.',
+    '- Be strict and consistent, except where a parameter has its own guidance above. Judge only what is in the transcript. If a transcript is too short or garbled to judge, rate Unverifiable and say so in the summary.',
+    '- Every rating needs a short comment: for Yes, say in a few words what the agent did well (quote a phrase if you can); for No or Fatal, say what went wrong.',
     '- For the parameter about asking the customer to give a rating (CSAT): Yes only if the agent explicitly asked the customer to rate the service or the call, or to give feedback or a survey rating, before the call ended (in any wording or language). No if the call ended without that ask. NA only if the call never connected or ended before any conversation. In the comment, say in a few words what was or was not said.',
     '- Keep every comment, the summary and the improvement notes in plain English even though the call is in Hindi.',
     '- Return the finished audit in the required structured format only (the submit_audit result).'

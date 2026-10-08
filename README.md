@@ -31,6 +31,8 @@ One-time setup:
 2. **Add the AI key.** Project Settings (gear icon) → Script Properties → add `ANTHROPIC_API_KEY` with the key value. Optionally add `CLAUDE_MODEL` to pick a different model (default is `claude-sonnet-5-5`). The key stays in Google's Script Properties and never goes into this repo.
 3. **Check it.** Open the `/exec` URL with `?test=qms` on the end (should say `"reachable":true`), then with `?test=ai` (should say `"ok":true`). `?test=ai` makes one tiny AI call.
 
+The **AI Dashboard** tab reports only on calls scored through Auto Audit (saved audits carry a `source` of `ai`, or `ai-reviewed` when opened in the full form and checked by a person). They are kept out of the main Dashboard, TL report and Weekly Report so human-audit numbers stay clean. It shows totals, pass rate, CSAT-pitched rate, agent-wise and parameter-wise results (including what passed, not just defects), the defect Pareto, ACPT, and a log with details. Each call result also lists what went well, with points and the AI's evidence. Empathy and "accurate and complete resolution" are marked leniently by design (`aiHint` on those parameters in `index.html`).
+
 Using Google Gemini instead of Claude:
 
 1. Create an API key at [aistudio.google.com/apikey](https://aistudio.google.com/apikey). A Gemini app subscription (Google AI Pro etc.) does **not** include API usage; the API has its own free tier and its own billing.
