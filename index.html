@@ -1696,8 +1696,9 @@
   // "what goes well" side as well as the defects.
   function renderAiParamTable(list){
     var out = '<div class="card" style="padding:20px;margin-bottom:20px;"><h2 class="section-title">Parameter-wise (AI audits)</h2>';
-    out += '<p class="section-sub">How each parameter did across these calls. Pass % counts Yes and N/A; parameters the AI cannot judge from a recording show as not assessed.</p>';
+    out += '<p class="section-sub">How each parameter the AI audits did across these calls. Pass % counts Yes and N/A.</p>';
     out += '<div class="table-wrap"><table class="audits"><thead><tr><th>Parameter</th><th>Points</th><th>Assessed</th><th>Yes</th><th>No / Fatal</th><th>N/A</th><th>Pass %</th></tr></thead><tbody>';
+    var notAudited = [];
     PARAMS.forEach(function(p, i){
       var yes = 0, bad = 0, na = 0;
       list.forEach(function(a){
@@ -1706,15 +1707,15 @@
         if(r.rating === 'Yes') yes++; else if(r.rating === 'NA') na++; else bad++;
       });
       var assessed = yes + bad + na;
-      var pass = assessed ? Math.round((yes + na) / assessed * 100) : null;
+      if(!assessed){ notAudited.push(p.question.split(':')[0]); return; }   // not audited through AI: leave it out
+      var pass = Math.round((yes + na) / assessed * 100);
       out += '<tr><td><strong>'+esc(p.question)+'</strong><div style="color:var(--text-muted);font-size:11.5px;">'+esc(p.group)+'</div></td>'
-        + '<td class="mono">'+p.weight+'</td>'
-        + (assessed
-          ? '<td class="mono">'+assessed+'</td><td class="mono">'+yes+'</td><td class="mono">'+bad+'</td><td class="mono">'+na+'</td><td class="mono '+scoreCls(pass)+'">'+pass+'%</td>'
-          : '<td colspan="5" style="color:var(--text-muted);font-size:12.5px;">Not assessed by AI</td>')
-        + '</tr>';
+        + '<td class="mono">'+p.weight+'</td><td class="mono">'+assessed+'</td><td class="mono">'+yes+'</td><td class="mono">'+bad+'</td><td class="mono">'+na+'</td>'
+        + '<td class="mono '+scoreCls(pass)+'">'+pass+'%</td></tr>';
     });
-    return out + '</tbody></table></div></div>';
+    out += '</tbody></table></div>';
+    if(notAudited.length) out += '<p class="section-sub" style="margin:12px 0 0;">Not audited through AI (left out): '+esc(notAudited.join(', '))+'.</p>';
+    return out + '</div>';
   }
 
   function renderAiAuditLog(list){
