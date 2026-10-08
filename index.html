@@ -262,7 +262,14 @@
   // aiAudits = calls scored through Auto Audit (the AI Dashboard).
   var state = {audits: [], aiAudits: []};
   var aiFilters = {from:'', to:'', agent:'All'};
-  function isAiAudit(a){ return a.source === 'ai' || a.source === 'ai-reviewed'; }
+  function isAiAudit(a){
+    if(a.source === 'ai' || a.source === 'ai-reviewed') return true;
+    // Fallback for audits saved while the server was not yet keeping "source":
+    // an AI audit marks the items it could not judge "Not assessed ... (AI audit)".
+    return Array.isArray(a.ratings) && a.ratings.some(function(r){
+      return !r.rating && /\(AI audit\)\s*$/.test(r.comment || '');
+    });
+  }
   var syncStatus = 'loading'; // loading | synced | error | unconfigured
   var activeTab = 'submit';
   var expanded = {};
